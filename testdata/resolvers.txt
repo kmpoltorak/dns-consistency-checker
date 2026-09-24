@@ -1,0 +1,9 @@
+# Public DNS
+cloudflare 1.1.1.1
+google     8.8.8.8
+quad9      9.9.9.9
+cloudflare-v6 [2606:4700:4700::1111]:53
+
+# Internal DNS (examples)
+# internal-dns-1 10.10.10.53
+# internal-dns-2 10.10.20.53:5353

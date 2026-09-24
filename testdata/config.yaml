@@ -1,0 +1,16 @@
+servers:
+  - name: cloudflare
+    address: 1.1.1.1
+  - name: google
+    address: 8.8.8.8
+  - name: quad9
+    address: 9.9.9.9
+
+defaults:
+  timeout: 3s
+  retries: 1
+  retry_delay: 250ms
+  concurrency: 50
+  protocol: udp
+  tcp_fallback: true
+  compare_ttl: false

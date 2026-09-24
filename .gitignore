@@ -1,0 +1,19 @@
+# Build output
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Local exports and editor files
+/result.json
+/result.yaml
+/result.yml
+.idea/
+.vscode/
+.DS_Store
+
+# Local planning documents (not published)
+/prompt.md
+/IMPLEMENTATION_PLAN.md
