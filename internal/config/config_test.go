@@ -260,6 +260,8 @@ func TestPTRConversion(t *testing.T) {
 		"1.2.3.4":              "4.3.2.1.in-addr.arpa.",
 		"4.3.2.1.in-addr.arpa": "4.3.2.1.in-addr.arpa.",
 		"2001:db8::1":          "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa.",
+		"fe80::1%en0":          "1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.e.f.ip6.arpa.",
+		"::ffff:1.2.3.4":       "4.3.2.1.in-addr.arpa.",
 	} {
 		in := base()
 		in.Host, in.Type = host, "ptr"

@@ -382,7 +382,10 @@ func (s *Settings) resolveQuery(in Input) error {
 	}
 	if t == dns.TypePTR {
 		if addr, err := netip.ParseAddr(host); err == nil {
-			host, _ = dns.ReverseAddr(addr.Unmap().String())
+			// Zones (fe80::1%en0) are local and not part of the reverse name.
+			if host, err = dns.ReverseAddr(addr.WithZone("").Unmap().String()); err != nil {
+				return errorf(KindInput, "--host: cannot build reverse name for %s: %v", addr, err)
+			}
 		}
 	}
 	name, err := ValidateName(host)
