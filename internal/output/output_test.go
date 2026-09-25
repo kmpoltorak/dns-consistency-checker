@@ -130,10 +130,10 @@ func TestTable(t *testing.T) {
 	out := buf.String()
 	for _, want := range []string{
 		"Protocol:\nUDP (TCP fallback on truncation)\n",
-		"NAME         ADDRESS              STATUS    RESPONSE   TIME   PROTO      ATTEMPTS   FLAGS\n",
-		"cloudflare   1.1.1.1              NOERROR   10.0.0.1   18ms   udp->tcp   1          rd ra\n",
-		"-            [2001:db8::1]:5353   TIMEOUT   -          3s     udp        2          -\n",
-		"Consistency:\nPARTIAL_FAILURE\n",
+		"NAME         ADDRESS              STATUS       RESPONSE   TIME   PROTO      ATTEMPTS   FLAGS\n",
+		"cloudflare   1.1.1.1              ✅ NOERROR   10.0.0.1   18ms   udp->tcp   1          rd ra\n",
+		"-            [2001:db8::1]:5353   🚫 TIMEOUT   -          3s     udp        2          -\n",
+		"Consistency:\n⚠️ PARTIAL_FAILURE\n",
 		"Matching resolvers: 1\n",
 		"- [2001:db8::1]:5353 timed out: no response within 3s (2 attempts)\n",
 	} {
@@ -159,5 +159,16 @@ func TestResponseLines(t *testing.T) {
 	}
 	if got := responseLines(dnsclient.Result{Status: dnsclient.StatusNXDomain}); got[0] != "-" {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestDisplayWidthAndAlignment(t *testing.T) {
+	if displayWidth("✅ NOERROR") != 10 || displayWidth("NOERROR") != 7 || displayWidth("🚫") != 2 {
+		t.Fatal("displayWidth wrong")
+	}
+	lines, width := alignColumns([][]string{{"STATUS", "X"}, {"✅ NOERROR", "Y"}, {"", "Z"}})
+	want := []string{"STATUS       X", "✅ NOERROR   Y", "             Z"}
+	if strings.Join(lines, "|") != strings.Join(want, "|") || width != 14 {
+		t.Fatalf("got %q width %d", lines, width)
 	}
 }

@@ -18,19 +18,21 @@ UDP (TCP fallback on truncation)
 
 Resolvers checked: 5
 
-NAME             ADDRESS       STATUS     RESPONSE      TIME
--------------------------------------------------------------
-cloudflare       1.1.1.1       NOERROR    10.20.30.40   18ms
-                                          10.20.30.41
-google           8.8.8.8       NOERROR    10.20.30.40   21ms
-                                          10.20.30.41
-quad9            9.9.9.9       NOERROR    10.20.30.40   34ms
-                                          10.20.30.41
-internal-dns-1   10.10.10.53   NOERROR    10.20.30.40   2ms
-internal-dns-2   10.10.20.53   SERVFAIL   -             3ms
+NAME             ADDRESS       STATUS        RESPONSE      TIME
+---------------------------------------------------------------
+cloudflare       1.1.1.1       ✅ NOERROR    10.20.30.40   18ms
+                                             10.20.30.41
+google           8.8.8.8       ✅ NOERROR    10.20.30.40   21ms
+                                             10.20.30.41
+quad9            9.9.9.9       ✅ NOERROR    10.20.30.40   34ms
+                                             10.20.30.41
+internal-dns-1   10.10.10.53   ❌ NOERROR    10.20.30.40   2ms
+internal-dns-2   10.10.20.53   🚫 SERVFAIL   -             3ms
+
+✅ agrees   ❌ different answer   🚫 failed
 
 Consistency:
-INCONSISTENT
+❌ INCONSISTENT
 
 Successful: 4
 Failed: 1
@@ -425,6 +427,14 @@ print the full structured result. Results (including all issues) always go to
 ```bash
 dns-consistency-checker check --host example.com --servers-file resolvers.txt --output json | jq .summary.status
 ```
+
+In the table, each resolver's status is marked ✅ (agrees with the majority
+and, in expected mode, matches the expected RRset), ❌ (usable answer that
+differs from the majority or the expected RRset, or no majority exists) or 🚫
+(failed). The overall status is marked ✅ CONSISTENT, ❌ INCONSISTENT,
+⚠️ PARTIAL_FAILURE or 🚫 TOTAL_FAILURE. The icons need a UTF-8 terminal with
+emoji support (any modern terminal, including Windows Terminal); JSON and YAML
+output contain no icons.
 
 `--verbose` adds PROTO (`udp`, `tcp`, `udp->tcp`), ATTEMPTS and FLAGS
 (`aa tc rd ra ad cd` as reported by the resolver) columns. The AD flag is

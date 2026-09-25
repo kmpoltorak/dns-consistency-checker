@@ -7,7 +7,6 @@ import (
 	"io"
 	"slices"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/kmpoltorak/dns-consistency-checker/internal/compare"
@@ -46,7 +45,7 @@ func writeTable(out io.Writer, rep *compare.Report, m Meta) error {
 	}
 
 	var rows [][]string
-	for _, r := range rep.Results {
+	for i, r := range rep.Results {
 		lines := responseLines(r)
 		row := []string{}
 		if named {
@@ -54,7 +53,7 @@ func writeTable(out io.Writer, rep *compare.Report, m Meta) error {
 		} else {
 			row = append(row, r.Resolver.Address())
 		}
-		row = append(row, string(r.Status), lines[0], formatDuration(r.Duration))
+		row = append(row, resultIcon(rep, i)+" "+string(r.Status), lines[0], formatDuration(r.Duration))
 		if m.Verbose {
 			proto := r.ProtocolFinal
 			if r.ProtocolFinal != r.ProtocolInitial {
@@ -74,22 +73,11 @@ func writeTable(out io.Writer, rep *compare.Report, m Meta) error {
 		}
 	}
 
-	// Render the table first to size the separator line to its width.
-	var tb strings.Builder
-	tw := tabwriter.NewWriter(&tb, 0, 0, 3, ' ', 0)
-	for _, row := range append([][]string{header}, rows...) {
-		fmt.Fprintln(tw, strings.Join(row, "\t"))
-	}
-	_ = tw.Flush()
-	lines := strings.Split(strings.TrimSuffix(tb.String(), "\n"), "\n")
-	width := 0
-	for i, l := range lines {
-		lines[i] = strings.TrimRight(l, " ")
-		width = max(width, len(lines[i]))
-	}
+	lines, width := alignColumns(append([][]string{header}, rows...))
 	p("%s\n%s\n%s\n", lines[0], strings.Repeat("-", width), strings.Join(lines[1:], "\n"))
+	p("\n%s agrees   %s different answer   %s failed\n", iconOK, iconDiffers, iconFailed)
 
-	p("\nConsistency:\n%s\n\n", rep.Status)
+	p("\nConsistency:\n%s %s\n\n", overallIcons[rep.Status], rep.Status)
 	p("Successful: %d\nFailed: %d\n", rep.Successful, rep.Failed)
 
 	if g := rep.MajorityGroup(); g != nil && len(rep.Groups) > 1 {
@@ -199,4 +187,75 @@ func plural(n int) string {
 		return ""
 	}
 	return "s"
+}
+
+// Status icons. Each is a single rune displayed two columns wide.
+const (
+	iconOK      = "✅"
+	iconDiffers = "❌"
+	iconFailed  = "🚫"
+)
+
+var overallIcons = map[compare.Overall]string{
+	compare.Consistent:     iconOK,
+	compare.Inconsistent:   iconDiffers,
+	compare.PartialFailure: "⚠️",
+	compare.TotalFailure:   iconFailed,
+}
+
+// resultIcon marks result i: failed, different from the majority (or no
+// majority exists) or from the expected RRset, or agreeing.
+func resultIcon(rep *compare.Report, i int) string {
+	if !rep.Results[i].Status.Usable() {
+		return iconFailed
+	}
+	if rep.Expected != nil && slices.Contains(rep.Expected.NonMatching, i) {
+		return iconDiffers
+	}
+	if maj := rep.MajorityGroup(); len(rep.Groups) > 1 && (maj == nil || !slices.Contains(maj.Members, i)) {
+		return iconDiffers
+	}
+	return iconOK
+}
+
+// alignColumns pads cells to their column's display width (three spaces
+// between columns) and returns the lines and the widest line's width.
+// text/tabwriter counts runes, which misaligns two-column-wide icons.
+func alignColumns(rows [][]string) ([]string, int) {
+	var widths []int
+	for _, row := range rows {
+		for c, cell := range row {
+			if c == len(widths) {
+				widths = append(widths, 0)
+			}
+			widths[c] = max(widths[c], displayWidth(cell))
+		}
+	}
+	lines := make([]string, len(rows))
+	maxWidth := 0
+	for i, row := range rows {
+		var b strings.Builder
+		for c, cell := range row {
+			b.WriteString(cell)
+			if c < len(row)-1 {
+				b.WriteString(strings.Repeat(" ", widths[c]-displayWidth(cell)+3))
+			}
+		}
+		lines[i] = strings.TrimRight(b.String(), " ")
+		maxWidth = max(maxWidth, displayWidth(lines[i]))
+	}
+	return lines, maxWidth
+}
+
+// displayWidth is the terminal width of s: one column per rune, two for the
+// status icons.
+func displayWidth(s string) int {
+	n := 0
+	for _, r := range s {
+		n++
+		if strings.ContainsRune(iconOK+iconDiffers+iconFailed, r) {
+			n++
+		}
+	}
+	return n
 }
