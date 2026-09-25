@@ -432,7 +432,7 @@ In the table, each resolver's status is marked ✅ (agrees with the majority
 and, in expected mode, matches the expected RRset), 🔵 (usable answer that
 differs from the majority or the expected RRset, or no majority exists) or 🚫
 (failed). The overall status is marked ✅ CONSISTENT, ❌ INCONSISTENT,
-⚠️ PARTIAL_FAILURE or 🚫 TOTAL_FAILURE. The icons need a UTF-8 terminal with
+🟠 PARTIAL_FAILURE or 🚫 TOTAL_FAILURE. The icons need a UTF-8 terminal with
 emoji support (any modern terminal, including Windows Terminal); JSON and YAML
 output contain no icons.
 

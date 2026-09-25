@@ -110,7 +110,7 @@ renderer works from the same report:
 
 - rows in resolver input order, multi-record answers on continuation lines;
 - status icons per resolver (✅ agrees, 🔵 different answer, 🚫 failed) and
-  for the overall status (✅ CONSISTENT, ❌ INCONSISTENT, ⚠️ PARTIAL_FAILURE,
+  for the overall status (✅ CONSISTENT, ❌ INCONSISTENT, 🟠 PARTIAL_FAILURE,
   🚫 TOTAL_FAILURE);
 - columns aligned by terminal display width (`alignColumns`), because
   `text/tabwriter` counts the two-column-wide icons as one column;

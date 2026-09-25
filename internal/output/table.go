@@ -201,7 +201,7 @@ const (
 var overallIcons = map[compare.Overall]string{
 	compare.Consistent:     iconOK,
 	compare.Inconsistent:   "❌",
-	compare.PartialFailure: "⚠️",
+	compare.PartialFailure: "🟠",
 	compare.TotalFailure:   iconFailed,
 }
 

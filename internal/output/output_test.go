@@ -133,7 +133,7 @@ func TestTable(t *testing.T) {
 		"NAME         ADDRESS              STATUS       RESPONSE   TIME   PROTO      ATTEMPTS   FLAGS\n",
 		"cloudflare   1.1.1.1              ✅ NOERROR   10.0.0.1   18ms   udp->tcp   1          rd ra\n",
 		"-            [2001:db8::1]:5353   🚫 TIMEOUT   -          3s     udp        2          -\n",
-		"Consistency:\n⚠️ PARTIAL_FAILURE\n",
+		"Consistency:\n🟠 PARTIAL_FAILURE\n",
 		"Matching resolvers: 1\n",
 		"- [2001:db8::1]:5353 timed out: no response within 3s (2 attempts)\n",
 	} {
