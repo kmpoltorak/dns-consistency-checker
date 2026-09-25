@@ -163,7 +163,7 @@ func TestResponseLines(t *testing.T) {
 }
 
 func TestDisplayWidthAndAlignment(t *testing.T) {
-	if displayWidth("✅ NOERROR") != 10 || displayWidth("NOERROR") != 7 || displayWidth("🚫") != 2 {
+	if displayWidth("✅ NOERROR") != 10 || displayWidth("NOERROR") != 7 || displayWidth("🚫") != 2 || displayWidth("ℹ️") != 2 {
 		t.Fatal("displayWidth wrong")
 	}
 	lines, width := alignColumns([][]string{{"STATUS", "X"}, {"✅ NOERROR", "Y"}, {"", "Z"}})

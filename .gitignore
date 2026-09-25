@@ -13,7 +13,3 @@ coverage.*
 .idea/
 .vscode/
 .DS_Store
-
-# Local planning documents (not published)
-/prompt.md
-/IMPLEMENTATION_PLAN.md

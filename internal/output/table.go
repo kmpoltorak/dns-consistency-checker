@@ -189,16 +189,17 @@ func plural(n int) string {
 	return "s"
 }
 
-// Status icons. Each is a single rune displayed two columns wide.
+// Status icons. ✅ and 🚫 are single runes displayed two columns wide; ℹ️ is
+// two runes (ℹ + variation selector) displayed two columns wide.
 const (
 	iconOK      = "✅"
-	iconDiffers = "❌"
+	iconDiffers = "ℹ️"
 	iconFailed  = "🚫"
 )
 
 var overallIcons = map[compare.Overall]string{
 	compare.Consistent:     iconOK,
-	compare.Inconsistent:   iconDiffers,
+	compare.Inconsistent:   "❌",
 	compare.PartialFailure: "⚠️",
 	compare.TotalFailure:   iconFailed,
 }
@@ -248,12 +249,12 @@ func alignColumns(rows [][]string) ([]string, int) {
 }
 
 // displayWidth is the terminal width of s: one column per rune, two for the
-// status icons.
+// single-rune icons ✅ and 🚫 (ℹ️ already counts as two runes).
 func displayWidth(s string) int {
 	n := 0
 	for _, r := range s {
 		n++
-		if strings.ContainsRune(iconOK+iconDiffers+iconFailed, r) {
+		if strings.ContainsRune(iconOK+iconFailed, r) {
 			n++
 		}
 	}

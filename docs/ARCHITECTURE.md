@@ -102,6 +102,23 @@ within an RRset are sorted by `normalize.CompareValues` (numeric fields and IP
 addresses compare numerically, with a byte-order tie-break), which is a total
 order, so duplicate removal and output are stable.
 
+## Output
+
+`output.NewDocument` converts a report into the stable schema used for both
+JSON and YAML (one set of structs with `json` and `yaml` tags). The table
+renderer works from the same report:
+
+- rows in resolver input order, multi-record answers on continuation lines;
+- status icons per resolver (✅ agrees, ℹ️ different answer, 🚫 failed) and
+  for the overall status (✅ CONSISTENT, ❌ INCONSISTENT, ⚠️ PARTIAL_FAILURE,
+  🚫 TOTAL_FAILURE);
+- columns aligned by terminal display width (`alignColumns`), because
+  `text/tabwriter` counts the two-column-wide icons as one column;
+- every finding is an issue with a severity: `error` (failures, different
+  answers, expected mismatch), `warning` (truncated answer kept, no
+  majority) and `info` (TTL differences, TCP fallback used, ignored answer
+  records, duplicate resolvers removed from the input).
+
 ## Error model
 
 - Per-resolver problems are data (`Result.Status`, `Result.Error`) and never
