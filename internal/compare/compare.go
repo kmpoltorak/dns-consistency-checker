@@ -287,7 +287,7 @@ func issues(rep *Report) []Issue {
 	}
 	if len(rep.Groups) > 1 && maj == nil {
 		add(nil, IssueNoMajority, SeverityWarning,
-			"no majority response: the largest response groups are tied at %d resolvers each", len(rep.Groups[0].Members))
+			"no majority response: the %d largest response groups are tied (%s each)", tied(rep.Groups), countResolvers(len(rep.Groups[0].Members)))
 	}
 	if !rep.CompareTTL {
 		for _, g := range rep.Groups {
@@ -324,6 +324,24 @@ func ttlSpread(results []dnsclient.Result, g Group) string {
 	}
 	return fmt.Sprintf("TTL %d-%ds on %d of %d records (per-record TTLs are in the structured output)",
 		lo, hi, differing, len(g.Records))
+}
+
+// tied returns how many groups share the largest size.
+func tied(groups []Group) int {
+	n := 0
+	for _, g := range groups {
+		if len(g.Members) == len(groups[0].Members) {
+			n++
+		}
+	}
+	return n
+}
+
+func countResolvers(n int) string {
+	if n == 1 {
+		return "1 resolver"
+	}
+	return fmt.Sprintf("%d resolvers", n)
 }
 
 func attempts(n int) string {

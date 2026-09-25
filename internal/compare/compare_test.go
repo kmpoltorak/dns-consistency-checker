@@ -129,6 +129,9 @@ func TestNoMajorityOnTie(t *testing.T) {
 	if got := issueTypes(rep); !slices.Equal(got, []IssueType{IssueNoMajority}) {
 		t.Fatalf("issues = %v", got)
 	}
+	if want := "no majority response: the 2 largest response groups are tied (1 resolver each)"; rep.Issues[0].Message != want {
+		t.Fatalf("message = %q", rep.Issues[0].Message)
+	}
 }
 
 func TestTTLDifferenceIsInfo(t *testing.T) {
