@@ -638,6 +638,7 @@ make test              # all unit and integration tests
 make test-race         # with the race detector
 make test-integration  # CLI end-to-end scenarios only
 make lint              # golangci-lint
+make vulncheck         # govulncheck: known vulnerabilities in reachable code
 go test -bench . -run '^$' ./internal/normalize ./internal/compare   # benchmarks
 ```
 
@@ -699,8 +700,10 @@ no shell, no compiler, runs as a non-root user.
 
 GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs
 gofmt verification, `go vet`, `go build` and `go test` on Linux, macOS and
-Windows, `go test -race` on Linux, golangci-lint, and a Docker build with a
-smoke test. No step needs Internet DNS resolvers.
+Windows, `go test -race` on Linux, golangci-lint, govulncheck, and a Docker
+build with a smoke test. It also runs weekly, so newly published
+vulnerabilities in dependencies or the Go toolchain are reported even without
+code changes. No step needs Internet DNS resolvers.
 
 ## Limitations
 
