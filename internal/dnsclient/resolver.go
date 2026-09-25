@@ -96,7 +96,9 @@ func validHostname(host string) bool {
 			return false
 		}
 		for _, c := range l {
-			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c == '_') {
+			switch {
+			case c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '-', c == '_':
+			default:
 				return false
 			}
 		}
