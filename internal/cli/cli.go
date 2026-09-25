@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"runtime"
+	"runtime/debug"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -34,6 +35,17 @@ const (
 
 // Version is set at build time with -ldflags "-X .../internal/cli.Version=...".
 var Version = "dev"
+
+// version returns Version, or the module version recorded by
+// "go install ...@vX.Y.Z" when no version was injected at build time.
+func version() string {
+	if Version == "dev" {
+		if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+			return bi.Main.Version
+		}
+	}
+	return Version
+}
 
 const name = "dns-consistency-checker"
 
@@ -76,7 +88,7 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, getenv fu
 	case "check":
 		return runCheck(ctx, args[1:], stdout, stderr, getenv)
 	case "version", "--version", "-version":
-		fmt.Fprintf(stdout, "%s %s\n", name, Version)
+		fmt.Fprintf(stdout, "%s %s\n", name, version())
 		return ExitConsistent
 	case "help", "--help", "-help", "-h":
 		topic := ""
@@ -175,7 +187,7 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer, gete
 	})
 	rep := compare.Analyze(results, compare.Options{CompareTTL: s.CompareTTL, Expected: s.Expected, Notes: notes(s.Notes)})
 	meta := output.Meta{
-		Version: Version, QueryName: s.QueryName, QueryType: dns.TypeToString[s.Type], Protocol: s.Protocol,
+		Version: version(), QueryName: s.QueryName, QueryType: dns.TypeToString[s.Type], Protocol: s.Protocol,
 		TCPFallback: s.TCPFallback, Timeout: s.Timeout, Retries: s.Retries, Verbose: s.Verbose,
 	}
 
