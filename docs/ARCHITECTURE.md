@@ -166,3 +166,56 @@ differ by platform:
   becomes a `TIMEOUT`.
 - IPv6 zone identifiers use interface names on Unix (`%en0`) and interface
   indexes on Windows (`%12`).
+
+## Project structure
+
+```text
+cmd/dns-consistency-checker/   main: signals, stdio, exit code
+internal/cli/                  commands, flags, help, orchestration, exit codes; end-to-end tests
+internal/config/               defaults, limits, env, YAML config, resolver/expected files, validation
+internal/dnsclient/            resolver parsing, UDP/TCP exchange, TCP fallback, retries, worker pool
+internal/normalize/            record type registry, normalization, expected-value parsing
+internal/compare/              consistency engine: groups, majority, outliers, TTL, expected, issues, status
+internal/output/               JSON/YAML schema, table rendering, export
+internal/testdns/              local DNS test server (tests only)
+testdata/                      example resolver list, config, expected file
+docs/                          Getting Started, Reference, Architecture
+```
+
+## Dependencies
+
+| Module | Why |
+|--------|-----|
+| [`github.com/miekg/dns`](https://github.com/miekg/dns) | The de-facto standard Go DNS library (used by CoreDNS). Correct wire format for all record types and TCP framing; avoids reimplementing the DNS protocol. |
+| [`go.yaml.in/yaml/v3`](https://github.com/yaml/go-yaml) | YAML configuration and output; the maintained continuation of `gopkg.in/yaml.v3`. |
+
+Everything else is the Go standard library.
+
+## Testing
+
+```bash
+make test              # all unit and integration tests
+make test-race         # with the race detector
+make test-integration  # CLI end-to-end scenarios only
+make lint              # golangci-lint
+make vulncheck         # govulncheck: known vulnerabilities in reachable code
+go test -bench . -run '^$' ./internal/normalize ./internal/compare   # benchmarks
+```
+
+Tests never use the Internet. `internal/testdns` starts deterministic
+in-process DNS servers on ephemeral localhost ports (UDP and TCP on the same
+port) that simulate every response code, timeouts, truncation, TCP-only
+servers, reordered and duplicated records, CNAME chains and loops, TTL
+differences and all supported record types. Network errors use closed ports;
+protocol errors use a raw UDP socket that sends garbage, short messages and
+wrong message IDs. IPv6 tests are skipped automatically where `::1` is
+unavailable.
+
+## CI
+
+GitHub Actions ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs
+gofmt verification, `go vet`, `go build` and `go test` on Linux, macOS and
+Windows, `go test -race` on Linux, golangci-lint, govulncheck, and a Docker
+build with a smoke test. It also runs weekly, so newly published
+vulnerabilities in dependencies or the Go toolchain are reported even without
+code changes. No step needs Internet DNS resolvers.

@@ -45,4 +45,4 @@ clean:
 	rm -rf bin
 
 docker-build:
-	docker build --build-arg VERSION=$(VERSION) -t $(BINARY):$(VERSION) .
+	docker build --build-arg VERSION=$(VERSION) -t $(BINARY):$(VERSION) -t $(BINARY):latest .
