@@ -26,10 +26,10 @@ google           8.8.8.8       ✅ NOERROR    10.20.30.40   21ms
                                              10.20.30.41
 quad9            9.9.9.9       ✅ NOERROR    10.20.30.40   34ms
                                              10.20.30.41
-internal-dns-1   10.10.10.53   ℹ️ NOERROR    10.20.30.40   2ms
+internal-dns-1   10.10.10.53   🔵 NOERROR    10.20.30.40   2ms
 internal-dns-2   10.10.20.53   🚫 SERVFAIL   -             3ms
 
-✅ agrees   ℹ️ different answer   🚫 failed
+✅ agrees   🔵 different answer   🚫 failed
 
 Consistency:
 ❌ INCONSISTENT
@@ -429,7 +429,7 @@ dns-consistency-checker check --host example.com --servers-file resolvers.txt --
 ```
 
 In the table, each resolver's status is marked ✅ (agrees with the majority
-and, in expected mode, matches the expected RRset), ℹ️ (usable answer that
+and, in expected mode, matches the expected RRset), 🔵 (usable answer that
 differs from the majority or the expected RRset, or no majority exists) or 🚫
 (failed). The overall status is marked ✅ CONSISTENT, ❌ INCONSISTENT,
 ⚠️ PARTIAL_FAILURE or 🚫 TOTAL_FAILURE. The icons need a UTF-8 terminal with

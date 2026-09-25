@@ -189,11 +189,12 @@ func plural(n int) string {
 	return "s"
 }
 
-// Status icons. ✅ and 🚫 are single runes displayed two columns wide; ℹ️ is
-// two runes (ℹ + variation selector) displayed two columns wide.
+// Status icons. Each is a single rune that terminals display two columns
+// wide. Avoid icons with a variation selector (e.g. ℹ️): terminals disagree
+// on their width, which breaks alignment.
 const (
 	iconOK      = "✅"
-	iconDiffers = "ℹ️"
+	iconDiffers = "🔵"
 	iconFailed  = "🚫"
 )
 
@@ -249,12 +250,12 @@ func alignColumns(rows [][]string) ([]string, int) {
 }
 
 // displayWidth is the terminal width of s: one column per rune, two for the
-// single-rune icons ✅ and 🚫 (ℹ️ already counts as two runes).
+// status icons.
 func displayWidth(s string) int {
 	n := 0
 	for _, r := range s {
 		n++
-		if strings.ContainsRune(iconOK+iconFailed, r) {
+		if strings.ContainsRune(iconOK+iconDiffers+iconFailed, r) {
 			n++
 		}
 	}

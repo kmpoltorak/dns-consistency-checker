@@ -109,7 +109,7 @@ JSON and YAML (one set of structs with `json` and `yaml` tags). The table
 renderer works from the same report:
 
 - rows in resolver input order, multi-record answers on continuation lines;
-- status icons per resolver (✅ agrees, ℹ️ different answer, 🚫 failed) and
+- status icons per resolver (✅ agrees, 🔵 different answer, 🚫 failed) and
   for the overall status (✅ CONSISTENT, ❌ INCONSISTENT, ⚠️ PARTIAL_FAILURE,
   🚫 TOTAL_FAILURE);
 - columns aligned by terminal display width (`alignColumns`), because
