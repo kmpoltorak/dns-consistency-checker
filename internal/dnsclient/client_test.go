@@ -218,7 +218,7 @@ func TestQueryCNAMEChain(t *testing.T) {
 	if !slices.Equal(res.CNAMEChain, []string{"frontend.example.net.", "edge.example.net."}) {
 		t.Fatalf("chain = %q", res.CNAMEChain)
 	}
-	if res.FinalName != "edge.example.net." || !slices.Equal(values(res), []string{"10.20.30.40"}) {
+	if res.FinalName != "edge.example.net." || !slices.Equal(values(res), []string{"10.20.30.40"}) || res.IgnoredRecords != 1 {
 		t.Fatalf("final = %q records = %q", res.FinalName, values(res))
 	}
 }

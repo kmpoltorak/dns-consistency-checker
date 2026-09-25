@@ -89,6 +89,7 @@ type Result struct {
 	Attempts        int
 	Time            time.Time // start of the first attempt, UTC
 	Error           string    // last error message; empty on success
+	IgnoredRecords  int       // answer records outside the CNAME chain or of other types
 }
 
 // protocolError marks malformed or mismatching responses.
@@ -182,7 +183,7 @@ func (res *Result) attempt(ctx context.Context, qtype uint16, opts Options, log 
 		resp, err = exchange(ctx, proto, res.Resolver, m, opts.Timeout)
 	}
 	res.ProtocolFinal = proto
-	res.CNAMEChain, res.Records, res.Flags = nil, nil, Flags{}
+	res.CNAMEChain, res.Records, res.Flags, res.IgnoredRecords = nil, nil, Flags{}, 0
 	res.FinalName = normalize.Name(res.QueryName)
 	if err != nil {
 		res.Status, res.Error = classify(err, opts.Timeout)
@@ -203,13 +204,8 @@ func (res *Result) attempt(ctx context.Context, qtype uint16, opts Options, log 
 		res.Error = "resolver returned " + string(res.Status)
 		return
 	}
-	ignored, err := res.extract(resp, qtype)
-	if err != nil {
+	if res.IgnoredRecords, err = res.extract(resp, qtype); err != nil {
 		res.Status, res.Error = StatusProtocolError, err.Error()
-		return
-	}
-	if ignored > 0 {
-		log.Debug("ignored answer records outside the CNAME chain or of other types", "count", ignored)
 	}
 }
 

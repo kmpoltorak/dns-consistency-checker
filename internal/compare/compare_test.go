@@ -266,3 +266,25 @@ func BenchmarkAnalyze100(b *testing.B) {
 		_ = Analyze(results, Options{})
 	}
 }
+
+func TestDuplicateNotes(t *testing.T) {
+	rep := Analyze([]dnsclient.Result{res("a", ok, "10.0.0.1")}, Options{Duplicates: []string{"duplicate resolver x ignored"}})
+	if rep.Status != Consistent || len(rep.Issues) != 1 || rep.Issues[0].Type != IssueDuplicate ||
+		rep.Issues[0].Severity != SeverityInfo || rep.Issues[0].Message != "duplicate resolver x ignored" {
+		t.Fatalf("got %s %+v", rep.Status, rep.Issues)
+	}
+}
+
+func TestInfoIssues(t *testing.T) {
+	r := res("a", ok, "10.0.0.1")
+	r.ProtocolInitial, r.ProtocolFinal, r.IgnoredRecords = "udp", "tcp", 2
+	rep := Analyze([]dnsclient.Result{r}, Options{})
+	if got := issueTypes(rep); rep.Status != Consistent || !slices.Equal(got, []IssueType{IssueTCPFallback, IssueIgnoredRecords}) {
+		t.Fatalf("got %s %v", rep.Status, got)
+	}
+	for _, is := range rep.Issues {
+		if is.Severity != SeverityInfo {
+			t.Fatalf("severity %s", is.Severity)
+		}
+	}
+}

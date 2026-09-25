@@ -152,9 +152,6 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer, gete
 		fmt.Fprintf(stderr, "error: %v\n", err)
 		return errorExitCode(err)
 	}
-	for _, d := range s.Duplicates {
-		fmt.Fprintf(stderr, "warning: %s\n", d)
-	}
 
 	level := slog.LevelWarn
 	if s.Verbose {
@@ -174,7 +171,7 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer, gete
 		Concurrency: s.Concurrency,
 		Logger:      log,
 	})
-	rep := compare.Analyze(results, compare.Options{CompareTTL: s.CompareTTL, Expected: s.Expected})
+	rep := compare.Analyze(results, compare.Options{CompareTTL: s.CompareTTL, Expected: s.Expected, Duplicates: s.Duplicates})
 	meta := output.Meta{
 		Version: Version, QueryName: s.QueryName, QueryType: dns.TypeToString[s.Type], Protocol: s.Protocol,
 		TCPFallback: s.TCPFallback, Timeout: s.Timeout, Retries: s.Retries, Verbose: s.Verbose,

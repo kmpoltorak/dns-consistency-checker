@@ -239,8 +239,9 @@ internal-dns-1 10.10.10.53
 
 `--server` and `--servers-file` can be combined; flags come first, then the
 file, in order. **Duplicates** (same IP and port, e.g. `1.1.1.1` and
-`1.1.1.1:53`) are removed automatically; the first occurrence is kept and a
-warning is printed to stderr. At most 1000 resolvers per check.
+`1.1.1.1:53`) are removed automatically; the first occurrence is kept and each
+removed entry is listed as an `[info]` issue (`duplicate_resolver`) in the
+report, so it also appears in JSON/YAML output and exports. At most 1000 resolvers per check.
 
 Output always follows input order, regardless of which resolver answers first.
 
@@ -322,7 +323,8 @@ whose question does not match, or that cannot be parsed are `PROTOCOL_ERROR`.
 
 When a UDP answer has the TC (truncated) flag, the same question is
 automatically re-sent over TCP within the same attempt; the result shows
-`protocol_initial: udp`, `protocol_final: tcp`. With `--no-tcp-fallback` the
+`protocol_initial: udp`, `protocol_final: tcp`, and an `[info]` issue
+(`tcp_fallback`) is added to the report. With `--no-tcp-fallback` the
 truncated answer is kept, the `truncated` flag is reported, and a warning
 issue says the RRset may be incomplete.
 
@@ -349,8 +351,8 @@ www.example.com
 Each result contains `cname_chain` (`frontend.example.net.`,
 `edge.example.net.`), `final_name` (`edge.example.net.`) and the records of the
 queried type owned by the final name. Both the chain and the final RRset are
-compared. Answer records that are not on the chain are ignored (they are
-counted in verbose diagnostics), and the authority/additional sections are
+compared. Answer records that are not on the chain are not compared; they are
+counted in `ignored_records` and reported as an `[info]` issue, and the authority/additional sections are
 never compared, so resolvers adding different glue do not cause false alarms.
 For `--type CNAME`, no chain is followed: the RRset is the CNAME owned by the
 query name.
@@ -417,8 +419,8 @@ dns-consistency-checker check --host example.com --type MX \
 ## Output Formats
 
 `--output table` (default) is for humans. `--output json` and `--output yaml`
-print the full structured result. Results always go to **stdout**; warnings,
-errors and verbose diagnostics go to **stderr**, so piping works:
+print the full structured result. Results (including all issues) always go to
+**stdout**; errors and verbose diagnostics go to **stderr**, so piping works:
 
 ```bash
 dns-consistency-checker check --host example.com --servers-file resolvers.txt --output json | jq .summary.status
@@ -458,7 +460,7 @@ in expected mode and `error` only on failed results; ordering is deterministic
       "cname_chain": [], "final_name": "example.com.",
       "answers": [ { "name": "example.com.", "type": "A", "value": "93.184.216.34", "ttl": 300,
                      "raw": "example.com.\t300\tIN\tA\t93.184.216.34" } ],
-      "group": 1
+      "ignored_records": 0, "group": 1
     },
     {
       "resolver": { "name": "internal", "address": "10.0.0.53:53" },
@@ -468,7 +470,7 @@ in expected mode and `error` only on failed results; ordering is deterministic
       "flags": { "authoritative": false, "truncated": false, "recursion_desired": false,
                  "recursion_available": false, "authenticated_data": false, "checking_disabled": false },
       "cname_chain": [], "final_name": "example.com.", "answers": [],
-      "group": 0,
+      "ignored_records": 0, "group": 0,
       "error": { "category": "timeout", "message": "no response within 3s" }
     }
   ],
@@ -488,8 +490,9 @@ Key fields:
 | `results[].resolver.address` | Always `IP:PORT` / `[IPv6]:PORT` |
 | `results[].answers[].value` | Normalized value (comparison key); `raw` is the original presentation |
 | `results[].group` | Group ID, `0` for failed results |
+| `results[].ignored_records` | Answer records not compared (outside the CNAME chain or of another type) |
 | `results[].error.category` | Lower-case status: `timeout`, `network_error`, `protocol_error`, `servfail`, `refused`, `formerr`, `notimp`, … |
-| `issues[].type` | `timeout`, `network_error`, `protocol_error`, `servfail`, `refused`, `formerr`, `notimp`, `rcode_error`, `different_rcode`, `different_rrset`, `truncated`, `expected_mismatch`, `no_majority`, `ttl_difference` |
+| `issues[].type` | `timeout`, `network_error`, `protocol_error`, `servfail`, `refused`, `formerr`, `notimp`, `rcode_error`, `different_rcode`, `different_rrset`, `truncated`, `expected_mismatch`, `no_majority`, `ttl_difference`, `duplicate_resolver`, `tcp_fallback`, `ignored_records` |
 | `issues[].severity` | `error`, `warning`, `info` |
 | `expected` | `records`, `matching`, `non_matching`, `failed`, and the three resolver lists |
 

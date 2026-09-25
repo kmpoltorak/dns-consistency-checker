@@ -109,8 +109,9 @@ order, so duplicate removal and output are stable.
 - Command-level problems are `*config.Error` values carrying a `Kind`
   (input, configuration, export) that `cli` maps to exit codes 4, 5 and 6.
   Rendering failures map to 7.
-- Everything the user needs to act on goes to stderr as `error: ...` or
-  `warning: ...`; verbose diagnostics use `log/slog` on stderr.
+- Findings about a check (including removed duplicate resolvers) are issues
+  in the report on stdout. Command errors go to stderr as `error: ...`;
+  verbose diagnostics use `log/slog` on stderr.
 
 ## Extension points
 

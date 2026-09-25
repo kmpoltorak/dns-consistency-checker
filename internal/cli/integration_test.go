@@ -151,6 +151,9 @@ func TestIntegrationScenario8TCPFallback(t *testing.T) {
 	if code != ExitConsistent || r.Status != "NOERROR" || r.ProtocolInitial != "udp" || r.ProtocolFinal != "tcp" || len(r.Answers) != 1 {
 		t.Fatalf("code=%d result=%+v", code, r)
 	}
+	if len(doc.Issues) != 1 || doc.Issues[0].Type != "tcp_fallback" || doc.Issues[0].Severity != "info" {
+		t.Fatalf("issues=%+v", doc.Issues)
+	}
 
 	code, doc = checkJSON(t, "--host", "example.com", "--server", srv.Addr, "--no-tcp-fallback")
 	r = doc.Results[0]
@@ -438,5 +441,21 @@ func TestExitCode(t *testing.T) {
 		if got := ExitCode(compare.Overall(s)); got != want {
 			t.Errorf("ExitCode(%s) = %d, want %d", s, got, want)
 		}
+	}
+}
+
+func TestIntegrationDuplicateResolverIsReported(t *testing.T) {
+	srv := testdns.Start(t, aRecords("10.0.0.1"))
+	host, port, _ := strings.Cut(srv.Addr, ":")
+	code, out, stderr := run(t, nil, "check", "--host", "example.com", "--server", srv.Addr, "--server", host+":"+port)
+	if code != ExitConsistent || stderr != "" {
+		t.Fatalf("code=%d stderr=%q", code, stderr)
+	}
+	if !strings.Contains(out, "Resolvers checked: 1\n") || !strings.Contains(out, "- [info] duplicate resolver "+srv.Addr) {
+		t.Fatalf("output:\n%s", out)
+	}
+	_, doc := checkJSON(t, "--host", "example.com", "--server", srv.Addr, "--server", "dup="+srv.Addr)
+	if len(doc.Issues) != 1 || doc.Issues[0].Type != "duplicate_resolver" || doc.Issues[0].Severity != "info" {
+		t.Fatalf("issues=%+v", doc.Issues)
 	}
 }

@@ -46,7 +46,8 @@ Resolvers (at least one source is required):
   --config PATH           YAML configuration file (servers and defaults).
                           Its servers are used only when no --server or
                           --servers-file is given.
-  Duplicate endpoints (1.1.1.1 and 1.1.1.1:53) are removed with a warning.
+  Duplicate endpoints (1.1.1.1 and 1.1.1.1:53) are removed and listed as
+  [info] issues in the report.
 
 Transport:
   --protocol udp|tcp      Transport (default udp)          env DNS_PROTOCOL

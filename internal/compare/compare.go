@@ -53,6 +53,9 @@ const (
 	IssueExpectedMismatch IssueType = "expected_mismatch"
 	IssueNoMajority       IssueType = "no_majority"
 	IssueTTLDifference    IssueType = "ttl_difference"
+	IssueDuplicate        IssueType = "duplicate_resolver"
+	IssueTCPFallback      IssueType = "tcp_fallback"
+	IssueIgnoredRecords   IssueType = "ignored_records"
 )
 
 // Issue is a human-readable finding. Resolver is empty for group-level issues.
@@ -85,6 +88,7 @@ type Expected struct {
 type Options struct {
 	CompareTTL bool
 	Expected   []normalize.Record // nil disables expected mode
+	Duplicates []string           // notes about duplicate resolvers removed from the input
 }
 
 // Report is the full analysis of one check.
@@ -174,6 +178,9 @@ func Analyze(results []dnsclient.Result, opts Options) Report {
 	}
 	rep.Status = overall(&rep)
 	rep.Issues = issues(&rep)
+	for _, d := range opts.Duplicates {
+		rep.Issues = append(rep.Issues, Issue{Type: IssueDuplicate, Severity: SeverityInfo, Message: d})
+	}
 	return rep
 }
 
@@ -220,6 +227,7 @@ var failureIssues = map[dnsclient.Status]IssueType{
 }
 
 // issues lists per-resolver issues in input order, then group-level issues.
+// Analyze appends duplicate-resolver notes last.
 func issues(rep *Report) []Issue {
 	var out []Issue
 	add := func(res *dnsclient.Result, t IssueType, sev Severity, format string, args ...any) {
@@ -253,6 +261,13 @@ func issues(rep *Report) []Issue {
 		if res.Flags.Truncated {
 			add(res, IssueTruncated, SeverityWarning,
 				"%s returned a truncated response (TC=1) and TCP fallback is disabled; the RRset may be incomplete", name)
+		}
+		if res.ProtocolFinal != res.ProtocolInitial {
+			add(res, IssueTCPFallback, SeverityInfo, "%s returned a truncated UDP response (TC=1); the query was repeated over TCP", name)
+		}
+		if n := res.IgnoredRecords; n > 0 {
+			add(res, IssueIgnoredRecords, SeverityInfo,
+				"%s returned %d answer record(s) outside the CNAME chain or of another type; they were not compared", name, n)
 		}
 		if maj != nil && slices.Contains(rep.Outliers, i) {
 			switch {
