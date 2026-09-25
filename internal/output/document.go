@@ -70,6 +70,7 @@ type Summary struct {
 	Groups         int      `json:"groups" yaml:"groups"`
 	MajorityGroup  int      `json:"majority_group" yaml:"majority_group"` // 0: no majority
 	Outliers       []string `json:"outliers" yaml:"outliers"`
+	TCPFallback    []string `json:"tcp_fallback" yaml:"tcp_fallback"` // resolvers retried over TCP after a truncated UDP answer
 }
 
 // ExpectedDoc is the expected-mode result.
@@ -96,7 +97,8 @@ type GroupDoc struct {
 // ResolverDoc identifies a resolver.
 type ResolverDoc struct {
 	Name    string `json:"name" yaml:"name"`
-	Address string `json:"address" yaml:"address"` // always IP:PORT or [IPv6]:PORT
+	Host    string `json:"host" yaml:"host"`       // hostname as given; empty for IP literals
+	Address string `json:"address" yaml:"address"` // IP:PORT or [IPv6]:PORT; empty if a hostname could not be resolved
 }
 
 // FlagsDoc are the response header flags.
@@ -176,6 +178,7 @@ func NewDocument(rep *compare.Report, m Meta) Document {
 			Failed:         rep.Failed,
 			Groups:         len(rep.Groups),
 			Outliers:       names(rep.Outliers),
+			TCPFallback:    names(rep.TCPFallback),
 		},
 		Groups:  make([]GroupDoc, 0, len(rep.Groups)),
 		Results: make([]ResultDoc, 0, len(rep.Results)),
@@ -213,7 +216,7 @@ func NewDocument(rep *compare.Report, m Meta) Document {
 
 func newResultDoc(r dnsclient.Result, group int) ResultDoc {
 	rd := ResultDoc{
-		Resolver:        ResolverDoc{Name: r.Resolver.Name, Address: r.Resolver.Endpoint.String()},
+		Resolver:        ResolverDoc{Name: r.Resolver.Name, Host: r.Resolver.Host},
 		QueryName:       r.QueryName,
 		QueryType:       r.QueryType,
 		Status:          string(r.Status),
@@ -228,6 +231,9 @@ func newResultDoc(r dnsclient.Result, group int) ResultDoc {
 		Answers:         make([]AnswerDoc, 0, len(r.Records)),
 		IgnoredRecords:  r.IgnoredRecords,
 		Group:           group,
+	}
+	if r.Resolver.Resolved() {
+		rd.Resolver.Address = r.Resolver.Endpoint.String()
 	}
 	for _, rec := range r.Records {
 		rd.Answers = append(rd.Answers, AnswerDoc{Name: rec.Name, Type: rec.Type, Value: rec.Value, TTL: rec.TTL, Raw: rec.Raw})

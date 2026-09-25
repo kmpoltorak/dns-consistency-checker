@@ -79,6 +79,13 @@ func writeTable(out io.Writer, rep *compare.Report, m Meta) error {
 
 	p("\nConsistency:\n%s %s\n\n", overallIcons[rep.Status], rep.Status)
 	p("Successful: %d\nFailed: %d\n", rep.Successful, rep.Failed)
+	if n := len(rep.TCPFallback); n > 0 {
+		p("TCP fallback: %d (UDP answer truncated, query repeated over TCP)\n", n)
+		for _, i := range rep.TCPFallback {
+			r := rep.Results[i]
+			p("  %s %s via %s\n", r.QueryName, r.QueryType, r.Resolver)
+		}
+	}
 
 	if g := rep.MajorityGroup(); g != nil && len(rep.Groups) > 1 {
 		p("\nMajority response (%d of %d resolvers; not necessarily correct):\n", len(g.Members), len(rep.Results))

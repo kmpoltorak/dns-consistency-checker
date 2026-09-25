@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -85,7 +86,7 @@ type Result struct {
 	FinalName       string             // last name of the chain, or the query name
 	Records         []normalize.Record // final RRset: sorted, de-duplicated
 	Flags           Flags
-	Duration        time.Duration // all attempts including retry delays
+	Duration        time.Duration // all attempts including retry delays; excludes resolver hostname lookup
 	Attempts        int
 	Time            time.Time // start of the first attempt, UTC
 	Error           string    // last error message; empty on success
@@ -142,6 +143,24 @@ func Query(ctx context.Context, r Resolver, qname string, qtype uint16, opts Opt
 	}
 	log = log.With("resolver", r.String())
 	res := newResult(r, qname, qtype, opts)
+
+	if r.Host != "" {
+		start := time.Now()
+		resolved, err := r.resolveHost(ctx, opts.Timeout)
+		if err != nil {
+			res.Attempts, res.Status, res.Error = 1, StatusNetworkError, err.Error()
+			if ctx.Err() != nil {
+				res.Error = "query canceled"
+			}
+			res.Duration = time.Since(start)
+			log.Debug("resolver hostname lookup failed", "error", err)
+			return res
+		}
+		res.Resolver = resolved
+		log.Debug("resolved resolver hostname", "address", resolved.Endpoint.Addr(), "lookup", time.Since(start))
+	}
+
+	// Duration measures the DNS query itself, not the hostname lookup.
 	start := time.Now()
 
 	for attempt := 1; ; attempt++ {
@@ -176,11 +195,11 @@ func (res *Result) attempt(ctx context.Context, qtype uint16, opts Options, log 
 
 	proto := opts.Protocol
 	log.Debug("sending query", "attempt", res.Attempts, "protocol", proto)
-	resp, err := exchange(ctx, proto, res.Resolver, m, opts.Timeout)
+	resp, err := exchange(ctx, proto, res.Resolver.Endpoint, m, opts.Timeout)
 	if err == nil && resp.Truncated && proto == UDP && opts.TCPFallback {
 		log.Debug("UDP response truncated, retrying over TCP", "attempt", res.Attempts)
 		proto = TCP
-		resp, err = exchange(ctx, proto, res.Resolver, m, opts.Timeout)
+		resp, err = exchange(ctx, proto, res.Resolver.Endpoint, m, opts.Timeout)
 	}
 	res.ProtocolFinal = proto
 	res.CNAMEChain, res.Records, res.Flags, res.IgnoredRecords = nil, nil, Flags{}, 0
@@ -268,12 +287,12 @@ func (res *Result) onChain(owner string) bool {
 // exchange sends one query over the given protocol and waits for the
 // matching response. The exchange is bounded by timeout and aborted
 // immediately when ctx is cancelled.
-func exchange(ctx context.Context, proto string, r Resolver, m *dns.Msg, timeout time.Duration) (*dns.Msg, error) {
+func exchange(ctx context.Context, proto string, endpoint netip.AddrPort, m *dns.Msg, timeout time.Duration) (*dns.Msg, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	var d net.Dialer
-	conn, err := d.DialContext(ctx, proto, r.Endpoint.String())
+	conn, err := d.DialContext(ctx, proto, endpoint.String())
 	if err != nil {
 		return nil, err
 	}

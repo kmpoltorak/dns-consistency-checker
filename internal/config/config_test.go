@@ -113,8 +113,7 @@ func TestValidationErrors(t *testing.T) {
 		{"no host", func(in *Input) { in.Host = " " }, nil, KindInput},
 		{"bad host", func(in *Input) { in.Host = "exa mple.com" }, nil, KindInput},
 		{"bad type", func(in *Input) { in.Type = "ANY" }, nil, KindInput},
-		{"no resolvers", func(in *Input) { in.Servers = nil }, nil, KindInput},
-		{"bad resolver", func(in *Input) { in.Servers = []string{"dns.google"} }, nil, KindInput},
+		{"bad resolver", func(in *Input) { in.Servers = []string{"8.8.8"} }, nil, KindInput},
 		{"bad port", func(in *Input) { in.Servers = []string{"1.1.1.1:0"} }, nil, KindInput},
 		{"timeout too big", func(in *Input) { in.Timeout = time.Hour; in.Set["timeout"] = true }, nil, KindInput},
 		{"timeout zero", func(in *Input) { in.Timeout = 0; in.Set["timeout"] = true }, nil, KindInput},
@@ -160,7 +159,7 @@ func TestConfigFileErrors(t *testing.T) {
 		"bad timeout":   "defaults:\n  timeout: forever\n",
 		"bad retries":   "defaults:\n  retries: 99\n",
 		"bad protocol":  "defaults:\n  protocol: sctp\n",
-		"bad server":    "servers:\n  - address: not-an-ip\n",
+		"bad server":    "servers:\n  - address: not_a_host!\n",
 		"unknown field": "servers:\n  - addr: 1.1.1.1\n",
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -208,8 +207,8 @@ internal 10.10.10.53:5353
 	if strings.Join(got, ",") != want {
 		t.Fatalf("resolvers = %s\nwant        %s", strings.Join(got, ","), want)
 	}
-	if len(s.Duplicates) != 2 {
-		t.Fatalf("duplicates = %q", s.Duplicates)
+	if len(s.Notes) != 2 {
+		t.Fatalf("notes = %q", s.Notes)
 	}
 
 	bad := write(t, "bad.txt", "1.1.1.1 two three\n")
@@ -354,5 +353,123 @@ func TestExampleFiles(t *testing.T) {
 	s, err = Resolve(in, env(nil))
 	if err != nil || len(s.Resolvers) != 4 {
 		t.Fatalf("servers example: %v", err)
+	}
+}
+
+func noteTypes(s *Settings) []string {
+	var out []string
+	for _, n := range s.Notes {
+		out = append(out, n.Type)
+	}
+	return out
+}
+
+func TestBuiltinDefaultResolvers(t *testing.T) {
+	in := base()
+	in.Servers = nil
+	s, err := Resolve(in, env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Resolvers) != 12 || s.Resolvers[0].String() != "cloudflare (1.1.1.1)" {
+		t.Fatalf("resolvers = %v", s.Resolvers)
+	}
+	if got := noteTypes(s); len(got) != 1 || got[0] != NoteDefaultResolvers {
+		t.Fatalf("notes = %v", got)
+	}
+	// Any explicit source disables the built-in list.
+	s, err = Resolve(base(), env(nil))
+	if err != nil || len(s.Resolvers) != 1 || len(s.Notes) != 0 {
+		t.Fatalf("got %v %v", s, err)
+	}
+}
+
+func TestDefaultConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	path := DefaultConfigPath("linux", env(map[string]string{"XDG_CONFIG_HOME": dir}))
+	if path != filepath.Join(dir, "dns-consistency-checker", "config.yaml") {
+		t.Fatalf("path = %q", path)
+	}
+	in := base()
+	in.Servers = nil
+	in.DefaultConfigFile = path
+
+	// Missing file: silently ignored, built-in resolvers are used.
+	s, err := Resolve(in, env(nil))
+	if err != nil || noteTypes(s)[0] != NoteDefaultResolvers {
+		t.Fatalf("got %v %v", s, err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("servers:\n  - name: mine\n    address: 10.0.0.53\ndefaults:\n  retries: 4\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err = Resolve(in, env(nil))
+	if err != nil || len(s.Resolvers) != 1 || s.Resolvers[0].Name != "mine" || s.Retries != 4 {
+		t.Fatalf("got %+v %v", s, err)
+	}
+	if got := noteTypes(s); len(got) != 1 || got[0] != NoteDefaultConfig {
+		t.Fatalf("notes = %v", got)
+	}
+
+	// --config takes precedence over the default file.
+	in.ConfigFile = write(t, "other.yaml", "defaults:\n  retries: 2\n")
+	s, err = Resolve(in, env(nil))
+	if err != nil || s.Retries != 2 || noteTypes(s)[0] != NoteDefaultResolvers {
+		t.Fatalf("got %+v %v", s, err)
+	}
+
+	// A broken default file is a configuration error, not silently ignored.
+	in.ConfigFile = ""
+	if err := os.WriteFile(path, []byte("bogus: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Resolve(in, env(nil)); err == nil || kindOf(t, err) != KindConfig {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestDefaultConfigPathPlatforms(t *testing.T) {
+	for _, tt := range []struct {
+		goos string
+		env  map[string]string
+		want string
+	}{
+		{"darwin", map[string]string{"HOME": "/home/u"}, filepath.Join("/home/u", ".config", "dns-consistency-checker", "config.yaml")},
+		{"windows", map[string]string{"AppData": `C:\\Users\\u\\AppData\\Roaming`}, filepath.Join(`C:\\Users\\u\\AppData\\Roaming`, "dns-consistency-checker", "config.yaml")},
+		{"linux", nil, ""},
+	} {
+		if got := DefaultConfigPath(tt.goos, env(tt.env)); got != tt.want {
+			t.Errorf("%s: %q, want %q", tt.goos, got, tt.want)
+		}
+	}
+}
+
+func TestHostnameResolvers(t *testing.T) {
+	in := base()
+	in.Servers = []string{"google=dns.google", "DNS.Google.", "one.one.one.one:5353", "1.1.1.1"}
+	s, err := Resolve(in, env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range s.Resolvers {
+		got = append(got, r.String())
+	}
+	if want := "google (dns.google),one.one.one.one:5353,1.1.1.1"; strings.Join(got, ",") != want {
+		t.Fatalf("resolvers = %s", strings.Join(got, ","))
+	}
+	if got := noteTypes(s); len(got) != 1 || got[0] != NoteDuplicate {
+		t.Fatalf("notes = %v", got)
+	}
+}
+
+// The embedded list must stay valid.
+func TestBuiltinListParses(t *testing.T) {
+	entries, err := parseServers(defaultResolvers, "builtin")
+	if err != nil || len(entries) != 12 {
+		t.Fatalf("%d entries, %v", len(entries), err)
 	}
 }

@@ -1,0 +1,15 @@
+# Built-in resolvers used when no --server, --servers-file or configuration
+# file provides any. Popular public resolvers, two addresses per provider;
+# non-filtering endpoints where the provider offers them.
+cloudflare    1.1.1.1
+cloudflare-2  1.0.0.1
+google        8.8.8.8
+google-2      8.8.4.4
+quad9         9.9.9.10
+quad9-2       149.112.112.10
+opendns       208.67.222.222
+opendns-2     208.67.220.220
+adguard       94.140.14.140
+adguard-2     94.140.14.141
+controld      76.76.2.0
+controld-2    76.76.10.0

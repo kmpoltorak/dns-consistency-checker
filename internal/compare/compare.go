@@ -53,7 +53,7 @@ const (
 	IssueExpectedMismatch IssueType = "expected_mismatch"
 	IssueNoMajority       IssueType = "no_majority"
 	IssueTTLDifference    IssueType = "ttl_difference"
-	IssueDuplicate        IssueType = "duplicate_resolver"
+	IssueHostnameResolved IssueType = "resolver_hostname"
 	IssueTCPFallback      IssueType = "tcp_fallback"
 	IssueIgnoredRecords   IssueType = "ignored_records"
 )
@@ -88,21 +88,22 @@ type Expected struct {
 type Options struct {
 	CompareTTL bool
 	Expected   []normalize.Record // nil disables expected mode
-	Duplicates []string           // notes about duplicate resolvers removed from the input
+	Notes      []Issue            // input notes (duplicates, defaults used), appended to Issues
 }
 
 // Report is the full analysis of one check.
 type Report struct {
-	Results    []dnsclient.Result
-	CompareTTL bool
-	Groups     []Group // by size (descending), then comparison key
-	Majority   int     // index into Groups, -1 when there is no unique largest group
-	Outliers   []int   // indexes into Results of usable answers outside the majority
-	Status     Overall
-	Successful int
-	Failed     int
-	Expected   *Expected
-	Issues     []Issue
+	Results     []dnsclient.Result
+	CompareTTL  bool
+	Groups      []Group // by size (descending), then comparison key
+	Majority    int     // index into Groups, -1 when there is no unique largest group
+	Outliers    []int   // indexes into Results of usable answers outside the majority
+	TCPFallback []int   // indexes into Results that were retried over TCP after a truncated UDP answer
+	Status      Overall
+	Successful  int
+	Failed      int
+	Expected    *Expected
+	Issues      []Issue
 }
 
 // MajorityGroup returns the majority group or nil.
@@ -176,11 +177,13 @@ func Analyze(results []dnsclient.Result, opts Options) Report {
 	if opts.Expected != nil {
 		rep.Expected = matchExpected(results, normalize.RRset(opts.Expected))
 	}
-	rep.Status = overall(&rep)
-	rep.Issues = issues(&rep)
-	for _, d := range opts.Duplicates {
-		rep.Issues = append(rep.Issues, Issue{Type: IssueDuplicate, Severity: SeverityInfo, Message: d})
+	for i, res := range results {
+		if res.ProtocolFinal != res.ProtocolInitial {
+			rep.TCPFallback = append(rep.TCPFallback, i)
+		}
 	}
+	rep.Status = overall(&rep)
+	rep.Issues = append(issues(&rep), opts.Notes...)
 	return rep
 }
 
@@ -227,7 +230,7 @@ var failureIssues = map[dnsclient.Status]IssueType{
 }
 
 // issues lists per-resolver issues in input order, then group-level issues.
-// Analyze appends duplicate-resolver notes last.
+// Analyze appends input notes last.
 func issues(rep *Report) []Issue {
 	var out []Issue
 	add := func(res *dnsclient.Result, t IssueType, sev Severity, format string, args ...any) {
@@ -241,6 +244,10 @@ func issues(rep *Report) []Issue {
 	for i := range rep.Results {
 		res := &rep.Results[i]
 		name := res.Resolver.String()
+		if res.Resolver.Host != "" && res.Resolver.Resolved() {
+			add(res, IssueHostnameResolved, SeverityInfo, "%s: hostname %s resolved to %s by the system resolver",
+				name, res.Resolver.Host, res.Resolver.Endpoint.Addr())
+		}
 		if !res.Status.Usable() {
 			t, ok := failureIssues[res.Status]
 			if !ok {
@@ -263,7 +270,8 @@ func issues(rep *Report) []Issue {
 				"%s returned a truncated response (TC=1) and TCP fallback is disabled; the RRset may be incomplete", name)
 		}
 		if res.ProtocolFinal != res.ProtocolInitial {
-			add(res, IssueTCPFallback, SeverityInfo, "%s returned a truncated UDP response (TC=1); the query was repeated over TCP", name)
+			add(res, IssueTCPFallback, SeverityInfo, "%s: UDP response for %s %s was truncated (TC=1); the query was repeated over TCP",
+				name, res.QueryName, res.QueryType)
 		}
 		if n := res.IgnoredRecords; n > 0 {
 			add(res, IssueIgnoredRecords, SeverityInfo,

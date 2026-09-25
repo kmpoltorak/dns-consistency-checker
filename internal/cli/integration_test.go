@@ -151,8 +151,13 @@ func TestIntegrationScenario8TCPFallback(t *testing.T) {
 	if code != ExitConsistent || r.Status != "NOERROR" || r.ProtocolInitial != "udp" || r.ProtocolFinal != "tcp" || len(r.Answers) != 1 {
 		t.Fatalf("code=%d result=%+v", code, r)
 	}
-	if len(doc.Issues) != 1 || doc.Issues[0].Type != "tcp_fallback" || doc.Issues[0].Severity != "info" {
-		t.Fatalf("issues=%+v", doc.Issues)
+	if len(doc.Issues) != 1 || doc.Issues[0].Type != "tcp_fallback" || doc.Issues[0].Severity != "info" ||
+		!slices.Equal(doc.Summary.TCPFallback, []string{srv.Addr}) || !strings.Contains(doc.Issues[0].Message, "example.com. A") {
+		t.Fatalf("issues=%+v summary=%+v", doc.Issues, doc.Summary)
+	}
+	_, out, _ := run(t, nil, "check", "--host", "example.com", "--server", srv.Addr)
+	if !strings.Contains(out, "TCP fallback: 1 (UDP answer truncated, query repeated over TCP)\n  example.com. A via "+srv.Addr+"\n") {
+		t.Fatalf("summary missing fallback block:\n%s", out)
 	}
 
 	code, doc = checkJSON(t, "--host", "example.com", "--server", srv.Addr, "--no-tcp-fallback")
@@ -418,7 +423,6 @@ func TestCommands(t *testing.T) {
 		{[]string{"bogus"}, ExitInvalidInput, "", "unknown command", true},
 		{[]string{"help", "bogus"}, ExitInvalidInput, "", "unknown command", true},
 		{[]string{"check"}, ExitInvalidInput, "", "--host is required", true},
-		{[]string{"check", "--host", "example.com"}, ExitInvalidInput, "", "no resolvers", true},
 		{[]string{"check", "--host", "example.com", "--server", "1.1.1.1", "extra"}, ExitInvalidInput, "", "unexpected argument", true},
 		{[]string{"check", "--bogus"}, ExitInvalidInput, "", "flag provided but not defined", true},
 		{[]string{"check", "--host", "example.com", "--server", "1.1.1.1", "--type", "ANY"}, ExitInvalidInput, "", "unsupported record type", true},
@@ -460,5 +464,28 @@ func TestIntegrationDuplicateResolverIsReported(t *testing.T) {
 	_, doc := checkJSON(t, "--host", "example.com", "--server", srv.Addr, "--server", "dup="+srv.Addr)
 	if len(doc.Issues) != 1 || doc.Issues[0].Type != "duplicate_resolver" || doc.Issues[0].Severity != "info" {
 		t.Fatalf("issues=%+v", doc.Issues)
+	}
+}
+
+func TestIntegrationHostnameResolver(t *testing.T) {
+	srv := testdns.Start(t, aRecords("10.0.0.1"))
+	_, port, _ := strings.Cut(srv.Addr, ":")
+	code, doc := checkJSON(t, "--host", "example.com", "--server", "local=localhost:"+port, "--server", "does-not-exist.invalid")
+	if code != ExitPartialFailure {
+		t.Fatalf("code=%d", code)
+	}
+	r := doc.Results[0]
+	if r.Resolver.Host != "localhost" || r.Resolver.Address != "127.0.0.1:"+port || r.Status != "NOERROR" {
+		t.Fatalf("resolver=%+v status=%s", r.Resolver, r.Status)
+	}
+	if f := doc.Results[1]; f.Status != "NETWORK_ERROR" || f.Resolver.Address != "" || !strings.Contains(f.Error.Message, "cannot resolve") {
+		t.Fatalf("failed=%+v", f)
+	}
+	var types []string
+	for _, is := range doc.Issues {
+		types = append(types, is.Type)
+	}
+	if !slices.Equal(types, []string{"resolver_hostname", "network_error"}) {
+		t.Fatalf("issues=%v", types)
 	}
 }

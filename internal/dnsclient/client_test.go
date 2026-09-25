@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -409,5 +410,34 @@ func TestQueryAll100Resolvers(t *testing.T) {
 		if r.Status != StatusNoError {
 			t.Fatalf("result %d: %s %s", i, r.Status, r.Error)
 		}
+	}
+}
+
+func TestQueryHostnameResolver(t *testing.T) {
+	srv := testdns.Start(t, testdns.Reply(dns.RcodeSuccess, "example.com. 60 IN A 10.0.0.1"))
+	_, port, _ := net.SplitHostPort(srv.Addr)
+	r, err := ParseResolver("local", "localhost:"+port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := Query(context.Background(), r, "example.com", dns.TypeA, opts())
+	if res.Status != StatusNoError || res.Resolver.Endpoint.Addr().String() != "127.0.0.1" || !slices.Equal(values(res), []string{"10.0.0.1"}) {
+		t.Fatalf("got %s %v %q (%s)", res.Status, res.Resolver.Endpoint, values(res), res.Error)
+	}
+	if res.Resolver.String() != "local (localhost:"+port+", 127.0.0.1)" {
+		t.Fatalf("String() = %q", res.Resolver.String())
+	}
+}
+
+func TestQueryUnresolvableHostname(t *testing.T) {
+	r, err := ParseResolver("", "does-not-exist.invalid") // RFC 6761: never resolves
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := opts()
+	o.Timeout = 2 * time.Second
+	res := Query(context.Background(), r, "example.com", dns.TypeA, o)
+	if res.Status != StatusNetworkError || res.Attempts != 1 || !strings.Contains(res.Error, "cannot resolve resolver hostname does-not-exist.invalid") {
+		t.Fatalf("got %s attempts=%d %q", res.Status, res.Attempts, res.Error)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"runtime"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -147,6 +148,7 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer, gete
 		fmt.Fprintf(stderr, "error: %v\nRun '%s help check' for usage.\n", err, name)
 		return ExitInvalidInput
 	}
+	in.DefaultConfigFile = config.DefaultConfigPath(runtime.GOOS, getenv)
 	s, err := config.Resolve(in, getenv)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
@@ -171,7 +173,7 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer, gete
 		Concurrency: s.Concurrency,
 		Logger:      log,
 	})
-	rep := compare.Analyze(results, compare.Options{CompareTTL: s.CompareTTL, Expected: s.Expected, Duplicates: s.Duplicates})
+	rep := compare.Analyze(results, compare.Options{CompareTTL: s.CompareTTL, Expected: s.Expected, Notes: notes(s.Notes)})
 	meta := output.Meta{
 		Version: Version, QueryName: s.QueryName, QueryType: dns.TypeToString[s.Type], Protocol: s.Protocol,
 		TCPFallback: s.TCPFallback, Timeout: s.Timeout, Retries: s.Retries, Verbose: s.Verbose,
@@ -189,4 +191,12 @@ func runCheck(ctx context.Context, args []string, stdout, stderr io.Writer, gete
 		log.Debug("exported result", "path", s.Export, "format", s.ExportFormat)
 	}
 	return ExitCode(rep.Status)
+}
+
+func notes(in []config.Note) []compare.Issue {
+	out := make([]compare.Issue, 0, len(in))
+	for _, n := range in {
+		out = append(out, compare.Issue{Type: compare.IssueType(n.Type), Severity: compare.SeverityInfo, Message: n.Message})
+	}
+	return out
 }

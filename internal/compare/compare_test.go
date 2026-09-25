@@ -271,8 +271,9 @@ func BenchmarkAnalyze100(b *testing.B) {
 }
 
 func TestDuplicateNotes(t *testing.T) {
-	rep := Analyze([]dnsclient.Result{res("a", ok, "10.0.0.1")}, Options{Duplicates: []string{"duplicate resolver x ignored"}})
-	if rep.Status != Consistent || len(rep.Issues) != 1 || rep.Issues[0].Type != IssueDuplicate ||
+	note := Issue{Type: "duplicate_resolver", Severity: SeverityInfo, Message: "duplicate resolver x ignored"}
+	rep := Analyze([]dnsclient.Result{res("a", ok, "10.0.0.1")}, Options{Notes: []Issue{note}})
+	if rep.Status != Consistent || len(rep.Issues) != 1 || rep.Issues[0].Type != "duplicate_resolver" ||
 		rep.Issues[0].Severity != SeverityInfo || rep.Issues[0].Message != "duplicate resolver x ignored" {
 		t.Fatalf("got %s %+v", rep.Status, rep.Issues)
 	}

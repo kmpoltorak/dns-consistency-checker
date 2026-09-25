@@ -38,9 +38,9 @@ dns-consistency-checker help [check]
 |------|---------|-----|-------------|
 | `--host NAME` | — | | Name to query (required). FQDNs, SRV-style names and reverse names are accepted. With `--type PTR` an IP address is converted to its reverse name. |
 | `--type TYPE` | `A` | | A, AAAA, CNAME, MX, NS, TXT, PTR, SRV, CAA, SOA (case-insensitive) |
-| `--server ADDR` | | | Resolver; repeatable. `ADDR` or `NAME=ADDR` |
+| `--server ADDR` | | | Resolver IP or hostname; repeatable. `ADDR` or `NAME=ADDR` |
 | `--servers-file PATH` | | | Resolver file |
-| `--config PATH` | | | YAML configuration file |
+| `--config PATH` | default file, if it exists | | YAML configuration file (see [Default Configuration File](#default-configuration-file)) |
 | `--protocol udp\|tcp` | `udp` | `DNS_PROTOCOL` | Transport |
 | `--no-tcp-fallback` | off | | Keep truncated UDP answers instead of retrying over TCP |
 | `--timeout DURATION` | `3s` | `DNS_QUERY_TIMEOUT` | Per-attempt timeout (1ms–60s) |
@@ -69,12 +69,23 @@ Address forms (default port 53):
 2001:4860:4860::8888
 [2001:4860:4860::8888]
 [2001:4860:4860::8888]:5353
+dns.google
+dns.google:53
 ```
 
-Resolvers must be IP literals — a DNS checker should not depend on DNS to
-find its resolvers. IPv4-mapped IPv6 addresses (`::ffff:1.1.1.1`) are treated
-as IPv4. Link-local IPv6 addresses with a zone (`[fe80::1%en0]:53`) are
-accepted.
+IPv4-mapped IPv6 addresses (`::ffff:1.1.1.1`) are treated as IPv4.
+Link-local IPv6 addresses with a zone (`[fe80::1%en0]:53`) are accepted.
+
+**Hostnames** are resolved with the operating system's resolver when the
+resolver is queried. If the name has several addresses, one is chosen
+deterministically: IPv4 before IPv6, then the lowest address. The table shows
+`dns.google (8.8.4.4)`, the report adds an `[info]` issue
+(`resolver_hostname`) naming the chosen address, and JSON/YAML carry both
+`resolver.host` and `resolver.address`. A hostname that cannot be resolved
+marks only that resolver as 🚫 `NETWORK_ERROR` ("cannot resolve resolver
+hostname"); the rest of the check continues. The lookup is not included in
+the reported query time. Hostnames make the check depend on your system's
+DNS; use IP addresses when that DNS itself is under test.
 
 **Repeated flags** (`NAME=` is optional):
 
@@ -99,12 +110,34 @@ internal-dns-1 10.10.10.53
 
 `--server` and `--servers-file` can be combined; flags come first, then the
 file, in order. **Duplicates** (same IP and port, e.g. `1.1.1.1` and
-`1.1.1.1:53`) are removed automatically; the first occurrence is kept and each
+`1.1.1.1:53`, or the same hostname and port) are removed automatically; the first occurrence is kept and each
 removed entry is listed as an `[info]` issue (`duplicate_resolver`) in the
 report, so it also appears in JSON/YAML output and exports. At most 1000
 resolvers per check.
 
 Output always follows input order, regardless of which resolver answers first.
+
+**Where the resolver list comes from** (first match wins; lists are never
+merged):
+
+1. `--server` and/or `--servers-file`,
+2. `servers` of the `--config` file,
+3. `servers` of the [default configuration file](#default-configuration-file),
+4. the built-in list of 12 public resolvers, reported as an `[info]` issue
+   (`default_resolvers`):
+
+| Provider | Addresses | Note |
+|----------|-----------|------|
+| Cloudflare | 1.1.1.1, 1.0.0.1 | |
+| Google | 8.8.8.8, 8.8.4.4 | |
+| Quad9 | 9.9.9.10, 149.112.112.10 | unfiltered endpoints |
+| OpenDNS | 208.67.222.222, 208.67.220.220 | may block known phishing domains |
+| AdGuard | 94.140.14.140, 94.140.14.141 | unfiltered endpoints |
+| Control D | 76.76.2.0, 76.76.10.0 | unfiltered endpoints |
+
+So `dns-consistency-checker check --host example.com` works with no resolver
+flags at all. The list is in
+[`internal/config/default-resolvers.txt`](../internal/config/default-resolvers.txt).
 
 ## Configuration File
 
@@ -127,7 +160,22 @@ defaults:
   compare_ttl: false
 ```
 
-Unknown keys are rejected. All `defaults` keys are optional.
+Unknown keys are rejected. All keys are optional. `servers[].address` accepts
+the same forms as `--server`, including hostnames.
+
+### Default Configuration File
+
+Without `--config`, this file is loaded automatically if it exists:
+
+| Platform | Path |
+|----------|------|
+| Linux, macOS | `$XDG_CONFIG_HOME/dns-consistency-checker/config.yaml`, or `~/.config/dns-consistency-checker/config.yaml` when `XDG_CONFIG_HOME` is unset |
+| Windows | `%AppData%\dns-consistency-checker\config.yaml` (`%XDG_CONFIG_HOME%\...` when set) |
+
+Put your own resolvers and defaults there to run checks without any resolver
+flags. Loading it is reported as an `[info]` issue (`default_config`). A
+missing file is ignored; an invalid one is a configuration error (exit 5).
+`--config` replaces it entirely.
 
 ## Configuration Precedence
 
@@ -135,9 +183,10 @@ Unknown keys are rejected. All `defaults` keys are optional.
 CLI flags  >  environment variables  >  configuration file  >  built-in defaults
 ```
 
-Only flags that are given explicitly override lower layers. For the resolver
-list, any `--server` or `--servers-file` replaces the configuration file's
-`servers` entirely (they are not merged).
+"Configuration file" means `--config`, or the default configuration file
+when `--config` is not given. Only flags that are given explicitly override
+lower layers. The resolver list follows its own order, described in
+[Resolver Input](#resolver-input).
 
 Environment variables: `DNS_QUERY_TIMEOUT`, `DNS_RETRIES`, `DNS_RETRY_DELAY`,
 `DNS_MAX_CONCURRENCY`, `DNS_PROTOCOL`.
@@ -292,7 +341,18 @@ whose question does not match, or that cannot be parsed are `PROTOCOL_ERROR`.
 When a UDP answer has the TC (truncated) flag, the same question is
 automatically re-sent over TCP within the same attempt; the result shows
 `protocol_initial: udp`, `protocol_final: tcp`, and an `[info]` issue
-(`tcp_fallback`) is added to the report. With `--no-tcp-fallback` the
+(`tcp_fallback`) names the query and resolver. The table summary lists every
+query that went through the fallback, and JSON/YAML list the resolvers in
+`summary.tcp_fallback`:
+
+```text
+Successful: 3
+Failed: 0
+TCP fallback: 2 (UDP answer truncated, query repeated over TCP)
+  example.com. TXT via cloudflare (1.1.1.1)
+  example.com. TXT via google (8.8.8.8)
+```
+ With `--no-tcp-fallback` the
 truncated answer is kept, the `truncated` flag is reported, and a warning
 issue says the RRset may be incomplete.
 
@@ -362,14 +422,14 @@ in expected mode and `error` only on failed results; ordering is deterministic
   "query": { "name": "example.com.", "type": "A", "protocol": "udp", "tcp_fallback": true,
              "compare_ttl": false, "timeout_ms": 3000, "retries": 1 },
   "summary": { "status": "PARTIAL_FAILURE", "resolvers_total": 2, "successful": 1, "failed": 1,
-               "groups": 1, "majority_group": 1, "outliers": [] },
+               "groups": 1, "majority_group": 1, "outliers": [], "tcp_fallback": [] },
   "groups": [
     { "id": 1, "status": "NOERROR", "cname_chain": [], "answers": ["93.184.216.34"],
       "resolvers": ["cloudflare (1.1.1.1)"], "count": 1 }
   ],
   "results": [
     {
-      "resolver": { "name": "cloudflare", "address": "1.1.1.1:53" },
+      "resolver": { "name": "cloudflare", "host": "", "address": "1.1.1.1:53" },
       "query_name": "example.com.", "query_type": "A",
       "status": "NOERROR", "protocol_initial": "udp", "protocol_final": "udp",
       "duration_ms": 18, "attempts": 1, "timestamp": "2026-09-24T20:00:00.123Z",
@@ -381,7 +441,7 @@ in expected mode and `error` only on failed results; ordering is deterministic
       "ignored_records": 0, "group": 1
     },
     {
-      "resolver": { "name": "internal", "address": "10.0.0.53:53" },
+      "resolver": { "name": "internal", "host": "", "address": "10.0.0.53:53" },
       "query_name": "example.com.", "query_type": "A",
       "status": "TIMEOUT", "protocol_initial": "udp", "protocol_final": "udp",
       "duration_ms": 6250, "attempts": 2, "timestamp": "2026-09-24T20:00:00.123Z",
@@ -405,12 +465,14 @@ Key fields:
 |-------|-------|
 | `summary.majority_group` | ID of the majority group, `0` if there is none (tie) |
 | `summary.outliers` | Resolvers with usable answers outside the majority |
-| `results[].resolver.address` | Always `IP:PORT` / `[IPv6]:PORT` |
+| `summary.tcp_fallback` | Resolvers whose truncated UDP answer was retried over TCP |
+| `results[].resolver.host` | Hostname as given, empty for IP addresses |
+| `results[].resolver.address` | `IP:PORT` / `[IPv6]:PORT` that was queried; empty if the hostname could not be resolved |
 | `results[].answers[].value` | Normalized value (comparison key); `raw` is the original presentation |
 | `results[].group` | Group ID, `0` for failed results |
 | `results[].ignored_records` | Answer records not compared (outside the CNAME chain or of another type) |
 | `results[].error.category` | Lower-case status: `timeout`, `network_error`, `protocol_error`, `servfail`, `refused`, `formerr`, `notimp`, … |
-| `issues[].type` | `timeout`, `network_error`, `protocol_error`, `servfail`, `refused`, `formerr`, `notimp`, `rcode_error`, `different_rcode`, `different_rrset`, `truncated`, `expected_mismatch`, `no_majority`, `ttl_difference`, `duplicate_resolver`, `tcp_fallback`, `ignored_records` |
+| `issues[].type` | `timeout`, `network_error`, `protocol_error`, `servfail`, `refused`, `formerr`, `notimp`, `rcode_error`, `different_rcode`, `different_rrset`, `truncated`, `expected_mismatch`, `no_majority`, `ttl_difference`, `duplicate_resolver`, `tcp_fallback`, `ignored_records`, `resolver_hostname`, `default_resolvers`, `default_config` |
 | `issues[].severity` | `error`, `warning`, `info` |
 | `expected` | `records`, `matching`, `non_matching`, `failed`, and the three resolver lists |
 

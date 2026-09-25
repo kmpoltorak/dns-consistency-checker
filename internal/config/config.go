@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"cmp"
+	_ "embed"
 	"errors"
 	"fmt"
 	"io"
@@ -57,6 +58,44 @@ const (
 	EnvProtocol    = "DNS_PROTOCOL"
 )
 
+// defaultResolvers is the built-in resolver list, in servers-file format.
+//
+//go:embed default-resolvers.txt
+var defaultResolvers []byte
+
+// Note types reported as informational issues.
+const (
+	NoteDuplicate        = "duplicate_resolver"
+	NoteDefaultResolvers = "default_resolvers"
+	NoteDefaultConfig    = "default_config"
+)
+
+// Note is an informational finding about the input, shown in the report.
+type Note struct {
+	Type    string
+	Message string
+}
+
+// DefaultConfigPath returns the per-user configuration file that is loaded
+// automatically when --config is not given:
+// $XDG_CONFIG_HOME/dns-consistency-checker/config.yaml, falling back to
+// ~/.config/... on Unix and %AppData%\... on Windows. It returns "" when no
+// base directory is known. getenv is os.Getenv outside tests.
+func DefaultConfigPath(goos string, getenv func(string) string) string {
+	base := getenv("XDG_CONFIG_HOME")
+	switch {
+	case base != "":
+	case goos == "windows":
+		base = getenv("AppData")
+	case getenv("HOME") != "":
+		base = filepath.Join(getenv("HOME"), ".config")
+	}
+	if base == "" {
+		return ""
+	}
+	return filepath.Join(base, "dns-consistency-checker", "config.yaml")
+}
+
 // Kind classifies an error so the CLI can map it to an exit code.
 type Kind int
 
@@ -83,25 +122,28 @@ func errorf(kind Kind, format string, args ...any) error {
 // Input holds the raw command-line values. Set records which flags were given
 // explicitly (by flag name without dashes); only those override lower layers.
 type Input struct {
-	Host, Type    string
-	Servers       []string // "ADDR" or "NAME=ADDR"
-	ServersFile   string
-	ConfigFile    string
-	Protocol      string
-	Timeout       time.Duration
-	Retries       int
-	RetryDelay    time.Duration
-	Concurrency   int
-	CompareTTL    bool
-	NoTCPFallback bool
-	Expected      []string
-	ExpectedFile  string
-	Output        string
-	Export        string
-	ExportFormat  string
-	Overwrite     bool
-	Verbose       bool
-	Set           map[string]bool
+	Host, Type  string
+	Servers     []string // "ADDR" or "NAME=ADDR"
+	ServersFile string
+	ConfigFile  string
+	// DefaultConfigFile is loaded like --config when ConfigFile is empty and
+	// the file exists (see DefaultConfigPath). Empty disables it.
+	DefaultConfigFile string
+	Protocol          string
+	Timeout           time.Duration
+	Retries           int
+	RetryDelay        time.Duration
+	Concurrency       int
+	CompareTTL        bool
+	NoTCPFallback     bool
+	Expected          []string
+	ExpectedFile      string
+	Output            string
+	Export            string
+	ExportFormat      string
+	Overwrite         bool
+	Verbose           bool
+	Set               map[string]bool
 }
 
 // Settings is the fully resolved and validated configuration of a check.
@@ -110,7 +152,7 @@ type Settings struct {
 	QueryName    string // fully qualified name that is queried
 	Type         uint16
 	Resolvers    []dnsclient.Resolver
-	Duplicates   []string // human-readable notes about removed duplicate resolvers
+	Notes        []Note // informational findings about the input
 	Protocol     string
 	TCPFallback  bool
 	Timeout      time.Duration
@@ -165,8 +207,15 @@ func Resolve(in Input, getenv func(string) string) (*Settings, error) {
 
 	// Layer 1: configuration file.
 	var cfg fileConfig
-	if in.ConfigFile != "" {
-		if err := loadConfig(in.ConfigFile, &cfg); err != nil {
+	configFile := in.ConfigFile
+	if configFile == "" && in.DefaultConfigFile != "" {
+		if _, err := os.Stat(in.DefaultConfigFile); err == nil {
+			configFile = in.DefaultConfigFile
+			s.Notes = append(s.Notes, Note{NoteDefaultConfig, "loaded default configuration file " + configFile})
+		}
+	}
+	if configFile != "" {
+		if err := loadConfig(configFile, &cfg); err != nil {
 			return nil, err
 		}
 		if err := s.applyConfig(&cfg); err != nil {
@@ -440,20 +489,30 @@ func (s *Settings) resolveResolvers(in Input, cfg *fileConfig) error {
 		}
 	}
 	if len(entries) == 0 {
-		return errorf(KindInput, "no resolvers given: use --server, --servers-file or --config")
+		builtin, err := parseServers(defaultResolvers, "built-in default resolvers")
+		if err != nil {
+			return err
+		}
+		for _, e := range builtin {
+			entries = append(entries, entry{e[0], e[1], e[2]})
+		}
+		s.Notes = append(s.Notes, Note{NoteDefaultResolvers, fmt.Sprintf(
+			"no resolvers given: using the %d built-in public resolvers (use --server, --servers-file or a configuration file to choose your own)",
+			len(builtin))})
 	}
 
-	seen := map[netip.AddrPort]dnsclient.Resolver{}
+	seen := map[string]dnsclient.Resolver{}
 	for _, e := range entries {
 		r, err := dnsclient.ParseResolver(e.name, e.addr)
 		if err != nil {
 			return errorf(kind, "%s: %v", e.origin, err)
 		}
-		if first, dup := seen[r.Endpoint]; dup {
-			s.Duplicates = append(s.Duplicates, fmt.Sprintf("duplicate resolver %s (%s) ignored: same endpoint as %s", r, e.origin, first))
+		if first, dup := seen[r.Key()]; dup {
+			s.Notes = append(s.Notes, Note{NoteDuplicate,
+				fmt.Sprintf("duplicate resolver %s (%s) ignored: same endpoint as %s", r, e.origin, first)})
 			continue
 		}
-		seen[r.Endpoint] = r
+		seen[r.Key()] = r
 		s.Resolvers = append(s.Resolvers, r)
 	}
 	if len(s.Resolvers) > MaxResolvers {
@@ -462,13 +521,17 @@ func (s *Settings) resolveResolvers(in Input, cfg *fileConfig) error {
 	return nil
 }
 
-// readServersFile returns [name, address, origin] triples. Each non-empty,
-// non-comment line is "ADDRESS" or "NAME ADDRESS".
 func readServersFile(path string) ([][3]string, error) {
 	data, err := readFile(path)
 	if err != nil {
 		return nil, errorf(KindInput, "--servers-file: %v", err)
 	}
+	return parseServers(data, path)
+}
+
+// parseServers returns [name, address, origin] triples. Each non-empty,
+// non-comment line is "ADDRESS" or "NAME ADDRESS".
+func parseServers(data []byte, path string) ([][3]string, error) {
 	var out [][3]string
 	sc := bufio.NewScanner(bytes.NewReader(data))
 	for n := 1; sc.Scan(); n++ {

@@ -70,7 +70,9 @@ information.
 - Concurrent queries with a bounded worker pool (100+ resolvers in one check).
 - UDP (default) and TCP; automatic TCP retry when a UDP answer is truncated.
 - IPv4 and IPv6 resolvers, custom ports, optional resolver names.
-- Resolvers from repeated flags, a resolver file, or a YAML config file.
+- Resolvers as IP addresses or hostnames, from repeated flags, a resolver file,
+  a YAML config file, or a per-user default config; 12 popular public
+  resolvers built in when you give none.
 - Record types A, AAAA, CNAME, MX, NS, TXT, PTR, SRV, CAA, SOA with record-specific normalization.
 - CNAME chain following; answers compared at the end of the chain.
 - Precise status per resolver: NOERROR, NXDOMAIN, SERVFAIL, REFUSED, FORMERR,
@@ -90,11 +92,16 @@ than the resolvers you point it at.
 ```bash
 go install github.com/kmpoltorak/dns-consistency-checker/cmd/dns-consistency-checker@latest
 
-dns-consistency-checker check --host example.com --type A \
-  --server 1.1.1.1 --server 8.8.8.8 --server 9.9.9.9
+# 12 built-in public resolvers
+dns-consistency-checker check --host example.com
+
+# your own resolvers: IP addresses or hostnames
+dns-consistency-checker check --host example.com --server 1.1.1.1 --server dns.google
 ```
 
-With many resolvers, keep them in a file (`NAME ADDRESS` per line):
+With many resolvers, keep them in a file (`NAME ADDRESS` per line) or in
+`~/.config/dns-consistency-checker/config.yaml`, which is loaded
+automatically:
 
 ```bash
 dns-consistency-checker check --host example.com --servers-file resolvers.txt
@@ -147,7 +154,8 @@ vulnerability scans. Details in [Architecture](docs/ARCHITECTURE.md#testing).
 
 - UDP and TCP only; no DNS over TLS, HTTPS or QUIC.
 - No DNSSEC validation; the AD flag is reported exactly as the resolver sent it.
-- Resolvers must be IP addresses, not hostnames.
+- Resolvers given by hostname depend on the system's DNS to find them; use
+  IP addresses when that DNS itself is under test.
 - Only the answer section is compared; authority/additional data is ignored.
 - Case normalization applies to ASCII letters only (as in DNS); internationalized
   names must be given in their ASCII (`xn--`) form.

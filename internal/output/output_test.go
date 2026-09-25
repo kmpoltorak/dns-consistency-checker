@@ -56,6 +56,7 @@ func TestJSONSchema(t *testing.T) {
 		`"address": "1.1.1.1:53"`, `"address": "[2001:db8::1]:5353"`, `"duration_ms": 18`, `"timestamp": "2026-01-02T03:04:05Z"`,
 		`"category": "timeout"`, `"protocol_final": "tcp"`, `"recursion_available": true`, `"timeout_ms": 3000`,
 		`"matching_resolvers": [` + "\n" + `      "cloudflare (1.1.1.1)"`,
+		`"tcp_fallback": [` + "\n" + `      "cloudflare (1.1.1.1)"`, `"host": ""`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("JSON missing %s", want)
@@ -134,6 +135,7 @@ func TestTable(t *testing.T) {
 		"cloudflare   1.1.1.1              ✅ NOERROR   10.0.0.1   18ms   udp->tcp   1          rd ra\n",
 		"-            [2001:db8::1]:5353   🚫 TIMEOUT   -          3s     udp        2          -\n",
 		"Consistency:\n🟠 PARTIAL_FAILURE\n",
+		"Failed: 1\nTCP fallback: 1 (UDP answer truncated, query repeated over TCP)\n  example.com. A via cloudflare (1.1.1.1)\n",
 		"Matching resolvers: 1\n",
 		"- [2001:db8::1]:5353 timed out: no response within 3s (2 attempts)\n",
 	} {

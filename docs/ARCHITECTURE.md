@@ -15,12 +15,14 @@ os.Args, env, stdio, signal context            (cmd/dns-consistency-checker)
 cli.Run ── parse flags (stdlib flag) ──► config.Input
         │
         ▼
-config.Resolve   defaults → config file → env → explicit flags; validation;
-                 resolver parsing + de-duplication; PTR conversion;
-                 expected values; export pre-checks.   No network I/O.
+config.Resolve   defaults → config file (--config or per-user default) → env →
+                 explicit flags; validation; resolver list (flags → config →
+                 built-in list) + de-duplication; PTR conversion; expected
+                 values; export pre-checks.   No network I/O.
         │
         ▼
-dnsclient.QueryAll   bounded worker pool; one Result per resolver, input order
+dnsclient.QueryAll   bounded worker pool; one Result per resolver, input order;
+                     resolver hostnames are looked up inside each worker
         │
         ▼
 compare.Analyze      pure function: groups, majority, outliers, expected,
@@ -47,6 +49,16 @@ exit code
 
 There are no interfaces: every component has exactly one implementation, and
 tests use real sockets against local servers instead of mocks.
+
+## Resolver hostnames
+
+A resolver given by hostname keeps its port in `Endpoint` and gets an address
+in `dnsclient.Query`, before the first attempt, via
+`net.DefaultResolver.LookupNetIP` bounded by `--timeout`. The chosen address
+is deterministic (IPv4 first, then lowest). A failed lookup becomes a
+`NETWORK_ERROR` result for that resolver only. Doing the lookup in the worker
+keeps `config.Resolve` free of network I/O and lets lookups run in parallel.
+The lookup time is excluded from `Result.Duration`.
 
 ## DNS exchange
 
@@ -117,7 +129,9 @@ renderer works from the same report:
 - every finding is an issue with a severity: `error` (failures, different
   answers, expected mismatch), `warning` (truncated answer kept, no
   majority) and `info` (TTL differences, TCP fallback used, ignored answer
-  records, duplicate resolvers removed from the input).
+  records, resolver hostname lookups, duplicate resolvers removed from the
+  input, default configuration file or built-in resolvers used);
+- the summary lists every query that went through the UDP→TCP fallback.
 
 ## Error model
 
@@ -136,6 +150,8 @@ renderer works from the same report:
   `internal/normalize/normalize.go` (a function from `dns.RR` to the canonical
   value). Parsing, validation, expected values, comparison and output pick it
   up automatically.
+- **Built-in resolvers:** edit `internal/config/default-resolvers.txt`
+  (embedded at build time, servers-file format).
 - **Output field:** add it to the document structs in
   `internal/output/document.go`. Additive changes keep `schema_version: 1`;
   renames or removals require incrementing `SchemaVersion`.

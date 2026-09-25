@@ -43,18 +43,27 @@ a source build use the absolute path, e.g.
 
 ## 2. Your first check
 
-Ask three public resolvers for the MX records of `gmail.com`:
+Ask for the MX records of `gmail.com` without naming any resolver:
 
 ```bash
-dcc check --host gmail.com --type MX \
-  --server 1.1.1.1 --server 8.8.8.8 --server 9.9.9.9
+dcc check --host gmail.com --type MX
 echo $?
 ```
 
-All three return the same five MX records, so the result is `✅ CONSISTENT`
-and the exit code is `0`. You will usually also see an `[info]` line about
-TTL differences: caching resolvers count TTLs down, so this is normal and does
-not affect the result.
+With no resolvers given, the tool uses its 12 built-in public resolvers
+(Cloudflare, Google, Quad9, OpenDNS, AdGuard, Control D) and says so in an
+`[info]` line. They all return the same five MX records, so the result is
+`✅ CONSISTENT` and the exit code is `0`. You will usually also see an
+`[info]` line about TTL differences: caching resolvers count TTLs down, so
+this is normal and does not affect the result.
+
+To choose resolvers yourself, pass IP addresses or hostnames:
+
+```bash
+dcc check --host gmail.com --type MX --server 1.1.1.1 --server google=dns.google
+```
+
+A hostname is resolved by your system (the table shows `dns.google (8.8.4.4)`).
 
 ## 3. Reading the output
 
@@ -127,6 +136,20 @@ dcc check --host example.com --config config.yaml
 Ready-made examples are in [`testdata/`](../testdata/). Flags override
 environment variables, which override the configuration file.
 
+**Make it your default.** Save the YAML file as
+`~/.config/dns-consistency-checker/config.yaml` (Windows:
+`%AppData%\dns-consistency-checker\config.yaml`) and it is loaded
+automatically whenever you run without `--config`:
+
+```bash
+mkdir -p ~/.config/dns-consistency-checker
+cp config.yaml ~/.config/dns-consistency-checker/config.yaml
+dcc check --host example.com        # uses your resolvers and defaults
+```
+
+The report notes `[info] loaded default configuration file …` so you always
+know which list was used.
+
 ## 5. Common tasks
 
 **Verify a change reached every resolver** — compare against the value you
@@ -190,7 +213,7 @@ These commands show each verdict with public resolvers:
 | `dcc check --host dns.google --server 1.1.1.1 --expected 1.2.3.4` | ❌ INCONSISTENT | 1 |
 | `dcc check --host dns.google --server 1.1.1.1 --server 127.0.0.1:1` | 🟠 PARTIAL_FAILURE | 2 |
 | `dcc check --host dns.google --server 192.0.2.1 --timeout 500ms --retries 0` | 🚫 TOTAL_FAILURE | 3 |
-| `dcc check --host dns.google --server dns.google` | error: resolvers must be IP addresses | 4 |
+| `dcc check --host dns.google --server 8.8.8` | error: invalid resolver address | 4 |
 
 `192.0.2.1` is a documentation address that never answers; depending on your
 network it is reported as a timeout or as a network error.
@@ -205,6 +228,11 @@ network it is reported as a timeout or as a network error.
   servers.
 - **An IPv6 resolver shows 🚫 NETWORK_ERROR.** Your network has no IPv6
   connectivity.
+- **A resolver given by hostname shows 🚫 "cannot resolve resolver
+  hostname".** Your system's DNS could not resolve that name. Use the IP
+  address instead, especially when your own DNS is what you are checking.
+- **Unexpected resolvers in the output.** Look for `[info] loaded default
+  configuration file` or `[info] no resolvers given` in the Issues section.
 - **Icons look misaligned or are missing.** Use a UTF-8 terminal with emoji
   support. JSON and YAML output contain no icons.
 

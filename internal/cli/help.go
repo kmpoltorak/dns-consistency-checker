@@ -36,16 +36,23 @@ Query:
   --type TYPE             A, AAAA, CNAME, MX, NS, TXT, PTR, SRV, CAA, SOA
                           (default A)
 
-Resolvers (at least one source is required):
+Resolvers:
   --server ADDR           Resolver address; repeatable. Forms: 8.8.8.8,
                           8.8.8.8:53, 2001:4860:4860::8888,
-                          [2001:4860:4860::8888]:53, or NAME=ADDR
-                          (e.g. google=8.8.8.8). Default port 53.
+                          [2001:4860:4860::8888]:53, dns.google,
+                          dns.google:53, or NAME=ADDR (e.g. google=8.8.8.8).
+                          Default port 53. Hostnames are resolved with the
+                          system resolver (IPv4 preferred).
   --servers-file PATH     File with one resolver per line: "ADDR" or
                           "NAME ADDR"; blank lines and # comments ignored.
   --config PATH           YAML configuration file (servers and defaults).
                           Its servers are used only when no --server or
-                          --servers-file is given.
+                          --servers-file is given. Without --config,
+                          ~/.config/dns-consistency-checker/config.yaml
+                          ($XDG_CONFIG_HOME, %AppData% on Windows) is loaded
+                          if it exists.
+  With no resolvers from any source, 12 built-in public resolvers are used
+  (Cloudflare, Google, Quad9, OpenDNS, AdGuard, Control D).
   Duplicate endpoints (1.1.1.1 and 1.1.1.1:53) are removed and listed as
   [info] issues in the report.
 
