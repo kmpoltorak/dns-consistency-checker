@@ -107,12 +107,14 @@ wg.Wait()
 
 `compare.Analyze` is a pure, deterministic function of its input. The
 comparison key of a usable result is built from its status, CNAME chain and
-sorted record values (plus TTLs with `--compare-ttl`), separated by bytes that
-cannot occur in presentation values. Groups are sorted by size and key; issues
-are emitted in resolver input order followed by group-level issues. Records
-within an RRset are sorted by `normalize.CompareValues` (numeric fields and IP
-addresses compare numerically, with a byte-order tie-break), which is a total
-order, so duplicate removal and output are stable.
+sorted record values (plus record and CNAME TTLs with `--compare-ttl`),
+separated by bytes that cannot occur in presentation values. Groups are sorted
+by size and key; issues are emitted in resolver input order followed by
+group-level issues. Records within an RRset are sorted by
+`normalize.CompareValues`: each field is ranked by kind (number, IP address,
+text) and compared within its kind, with a byte-order tie-break. That is a
+total order, so the sorted RRset, duplicate removal and the comparison key do
+not depend on the order the resolver returned records in.
 
 ## Output
 

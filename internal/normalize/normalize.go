@@ -126,8 +126,9 @@ func RRset(records []Record) []Record {
 
 // CompareValues orders canonical values naturally: space-separated fields
 // that are both numbers or both IP addresses compare numerically, so
-// "5 mx." sorts before "10 mx." and 10.0.0.2 before 10.0.0.10. Ties fall back
-// to byte order, making this a total order.
+// "5 mx." sorts before "10 mx." and 10.0.0.2 before 10.0.0.10. Fields of
+// different kinds order numbers first, then IP addresses, then other text.
+// Ties fall back to byte order, making this a total order.
 func CompareValues(a, b string) int {
 	fa, fb := strings.Fields(a), strings.Fields(b)
 	for i := range min(len(fa), len(fb)) {
@@ -141,16 +142,30 @@ func CompareValues(a, b string) int {
 	return strings.Compare(a, b)
 }
 
+// compareField orders fields by kind first (number, IP address, text), so the
+// order stays transitive when kinds are mixed ("2" < "10" < "1a").
 func compareField(a, b string) int {
-	if x, err := strconv.ParseUint(a, 10, 64); err == nil {
-		if y, err := strconv.ParseUint(b, 10, 64); err == nil {
-			return cmp.Compare(x, y)
+	x, errX := strconv.ParseUint(a, 10, 64)
+	y, errY := strconv.ParseUint(b, 10, 64)
+	p, errP := netip.ParseAddr(a)
+	q, errQ := netip.ParseAddr(b)
+	kind := func(num, addr error) int {
+		switch {
+		case num == nil:
+			return 0
+		case addr == nil:
+			return 1
 		}
+		return 2
 	}
-	if x, err := netip.ParseAddr(a); err == nil {
-		if y, err := netip.ParseAddr(b); err == nil {
-			return x.Compare(y)
-		}
+	ka, kb := kind(errX, errP), kind(errY, errQ)
+	switch {
+	case ka != kb:
+		return cmp.Compare(ka, kb)
+	case ka == 0:
+		return cmp.Compare(x, y)
+	case ka == 1:
+		return p.Compare(q)
 	}
 	return strings.Compare(a, b)
 }

@@ -2,6 +2,7 @@ package dnsclient
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"slices"
 	"strings"
@@ -221,6 +222,29 @@ func TestQueryCNAMEChain(t *testing.T) {
 	}
 	if res.FinalName != "edge.example.net." || !slices.Equal(values(res), []string{"10.20.30.40"}) || res.IgnoredRecords != 1 {
 		t.Fatalf("final = %q records = %q", res.FinalName, values(res))
+	}
+	if !slices.Equal(res.CNAMETTLs, []uint32{300, 300}) {
+		t.Fatalf("CNAME TTLs = %v", res.CNAMETTLs)
+	}
+}
+
+func TestQueryCNAMEChainTooLong(t *testing.T) {
+	var rrs []string
+	for i := range maxCNAMEHops + 1 {
+		rrs = append(rrs, fmt.Sprintf("hop%d.example.com. 60 IN CNAME hop%d.example.com.", i, i+1))
+	}
+	rrs = append(rrs, fmt.Sprintf("hop%d.example.com. 60 IN A 192.0.2.1", maxCNAMEHops+1))
+	srv := testdns.Start(t, testdns.Reply(dns.RcodeSuccess, rrs...))
+	res := Query(context.Background(), resolver(t, srv.Addr), "hop0.example.com", dns.TypeA, opts())
+	if res.Status != StatusProtocolError || res.CNAMEChain != nil || res.Records != nil {
+		t.Fatalf("got %s chain=%q records=%v error=%q", res.Status, res.CNAMEChain, res.Records, res.Error)
+	}
+
+	// Exactly maxCNAMEHops hops is still accepted.
+	srv = testdns.Start(t, testdns.Reply(dns.RcodeSuccess, rrs[1:]...))
+	res = Query(context.Background(), resolver(t, srv.Addr), "hop1.example.com", dns.TypeA, opts())
+	if res.Status != StatusNoError || len(res.CNAMEChain) != maxCNAMEHops || len(res.Records) != 1 {
+		t.Fatalf("got %s chain=%d records=%v error=%q", res.Status, len(res.CNAMEChain), res.Records, res.Error)
 	}
 }
 

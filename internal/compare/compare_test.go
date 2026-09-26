@@ -161,6 +161,19 @@ func TestTTLOnlyOutlierMessage(t *testing.T) {
 	}
 }
 
+func TestCNAMETTLCompared(t *testing.T) {
+	a := res("a", ok, "10.0.0.1@60")
+	a.CNAMEChain, a.CNAMETTLs = []string{"target.example."}, []uint32{60}
+	b := res("bb", ok, "10.0.0.1@60")
+	b.CNAMEChain, b.CNAMETTLs = []string{"target.example."}, []uint32{600}
+	if got := Analyze([]dnsclient.Result{a, b}, Options{}).Status; got != Consistent {
+		t.Fatalf("default status = %s", got)
+	}
+	if got := Analyze([]dnsclient.Result{a, b}, Options{CompareTTL: true}).Status; got != Inconsistent {
+		t.Fatalf("--compare-ttl status = %s", got)
+	}
+}
+
 func TestCNAMEChainParticipates(t *testing.T) {
 	a := res("a", ok, "10.0.0.1")
 	a.CNAMEChain = []string{"x.example."}

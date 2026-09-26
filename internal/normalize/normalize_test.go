@@ -126,6 +126,26 @@ func TestParseType(t *testing.T) {
 	}
 }
 
+func TestRRsetOrderIndependentMixedFields(t *testing.T) {
+	rs := func(vs ...string) []string {
+		var in []Record
+		for _, v := range vs {
+			in = append(in, Record{Value: v})
+		}
+		var out []string
+		for _, r := range RRset(in) {
+			out = append(out, r.Value)
+		}
+		return out
+	}
+	a := rs(`"x 2 z"`, `"x 10 z"`, `"x 1a z"`)
+	b := rs(`"x 10 z"`, `"x 1a z"`, `"x 2 z"`)
+	c := rs(`"x 1a z"`, `"x 2 z"`, `"x 10 z"`, `"x 2 z"`)
+	if !slices.Equal(a, b) || !slices.Equal(a, c) {
+		t.Fatalf("RRset depends on input order: %q %q %q", a, b, c)
+	}
+}
+
 func TestRRsetSortsAndDeduplicates(t *testing.T) {
 	in := []Record{{Value: "10.0.0.2", TTL: 1}, {Value: "10.0.0.1", TTL: 2}, {Value: "10.0.0.2", TTL: 3}}
 	got := RRset(in)

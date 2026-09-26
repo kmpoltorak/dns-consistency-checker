@@ -50,7 +50,8 @@ const (
 // EDNSBufferSize is the advertised EDNS(0) UDP payload size (DNS Flag Day 2020).
 const EDNSBufferSize = 1232
 
-// maxCNAMEHops bounds CNAME chain following within one answer section.
+// maxCNAMEHops bounds CNAME chain following within one answer section. A
+// longer chain is a PROTOCOL_ERROR, never a silently truncated answer.
 const maxCNAMEHops = 16
 
 // Options controls how queries are sent.
@@ -83,6 +84,7 @@ type Result struct {
 	ProtocolFinal   string
 	Status          Status
 	CNAMEChain      []string           // canonical CNAME targets, in order
+	CNAMETTLs       []uint32           // TTL of the CNAME record leading to each CNAMEChain entry
 	FinalName       string             // last name of the chain, or the query name
 	Records         []normalize.Record // final RRset: sorted, de-duplicated
 	Flags           Flags
@@ -202,7 +204,7 @@ func (res *Result) attempt(ctx context.Context, qtype uint16, opts Options, log 
 		resp, err = exchange(ctx, proto, res.Resolver.Endpoint, m, opts.Timeout)
 	}
 	res.ProtocolFinal = proto
-	res.CNAMEChain, res.Records, res.Flags, res.IgnoredRecords = nil, nil, Flags{}, 0
+	res.CNAMEChain, res.CNAMETTLs, res.Records, res.Flags, res.IgnoredRecords = nil, nil, nil, Flags{}, 0
 	res.FinalName = normalize.Name(res.QueryName)
 	if err != nil {
 		res.Status, res.Error = classify(err, opts.Timeout)
@@ -234,21 +236,26 @@ func (res *Result) attempt(ctx context.Context, qtype uint16, opts Options, log 
 func (res *Result) extract(resp *dns.Msg, qtype uint16) (ignored int, err error) {
 	name := res.FinalName
 	if qtype != dns.TypeCNAME {
-		targets := map[string]string{}
+		cnames := map[string]*dns.CNAME{}
 		for _, rr := range resp.Answer {
 			if c, ok := rr.(*dns.CNAME); ok {
-				targets[normalize.Name(c.Hdr.Name)] = normalize.Name(c.Target)
+				cnames[normalize.Name(c.Hdr.Name)] = c
 			}
 		}
 		seen := map[string]bool{name: true}
-		for range maxCNAMEHops {
-			next, ok := targets[name]
-			if !ok || seen[next] {
+		for hops := 0; ; hops++ {
+			c, ok := cnames[name]
+			if !ok || seen[normalize.Name(c.Target)] {
 				break // end of chain or CNAME loop
 			}
-			seen[next] = true
-			res.CNAMEChain = append(res.CNAMEChain, next)
-			name = next
+			if hops == maxCNAMEHops {
+				res.CNAMEChain, res.CNAMETTLs = nil, nil
+				return 0, &protocolError{fmt.Sprintf("CNAME chain longer than %d hops", maxCNAMEHops)}
+			}
+			name = normalize.Name(c.Target)
+			seen[name] = true
+			res.CNAMEChain = append(res.CNAMEChain, name)
+			res.CNAMETTLs = append(res.CNAMETTLs, c.Hdr.Ttl)
 		}
 	}
 	res.FinalName = name

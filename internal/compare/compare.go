@@ -125,12 +125,15 @@ func (r *Report) GroupOf(i int) int {
 }
 
 // Key returns the comparison key of a usable result: status, CNAME chain and
-// the sorted record values, plus TTLs when compareTTL is set.
+// the sorted record values, plus record and CNAME TTLs when compareTTL is set.
 func Key(res dnsclient.Result, compareTTL bool) string {
 	var b strings.Builder
 	b.WriteString(string(res.Status))
 	b.WriteByte(0)
 	b.WriteString(strings.Join(res.CNAMEChain, " "))
+	if compareTTL {
+		fmt.Fprintf(&b, "\x01%v", res.CNAMETTLs)
+	}
 	for _, rec := range res.Records {
 		b.WriteByte(0)
 		b.WriteString(rec.Value)

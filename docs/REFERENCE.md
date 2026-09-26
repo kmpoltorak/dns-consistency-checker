@@ -219,7 +219,8 @@ Adding a type is one entry in the normalizer registry
    - the response code (NOERROR vs NXDOMAIN),
    - the normalized CNAME chain,
    - the sorted set of normalized record values of the final RRset,
-   - the TTL of each record — **only** with `--compare-ttl`.
+   - the TTL of each record and of each CNAME on the chain — **only** with
+     `--compare-ttl`.
 
    Not compared: record order, raw text, packet bytes, header flags, the
    authority and additional sections.
@@ -242,7 +243,8 @@ Adding a type is one entry in the normalizer registry
 ## CNAME Handling
 
 For every type except CNAME, the tool follows CNAME records in the answer
-section starting from the query name (loop-safe, at most 16 hops):
+section starting from the query name (loop-safe, at most 16 hops; a longer
+chain makes the result a `PROTOCOL_ERROR` instead of a truncated answer):
 
 ```text
 www.example.com
@@ -252,7 +254,8 @@ www.example.com
 ```
 
 Each result contains `cname_chain` (`frontend.example.net.`,
-`edge.example.net.`), `final_name` (`edge.example.net.`) and the records of the
+`edge.example.net.`), `cname_ttls` (the TTL of the CNAME leading to each chain
+entry), `final_name` (`edge.example.net.`) and the records of the
 queried type owned by the final name. Both the chain and the final RRset are
 compared. Answer records that are not on the chain are not compared; they are
 counted in `ignored_records` and reported as an `[info]` issue. The
@@ -265,8 +268,9 @@ query name.
 TTLs are collected for every record and included in JSON/YAML output. By
 default they do not affect consistency — caching resolvers count TTLs down,
 so differences are normal. Differences inside a response group are reported
-as one `[info]` issue per group. With `--compare-ttl`, TTLs become part of the
-comparison key and any difference is `INCONSISTENT`.
+as one `[info]` issue per group. With `--compare-ttl`, TTLs of the final
+records and of the CNAME chain become part of the comparison key and any
+difference is `INCONSISTENT`.
 
 ## Expected Result Mode
 
@@ -435,7 +439,7 @@ in expected mode and `error` only on failed results; ordering is deterministic
       "duration_ms": 18, "attempts": 1, "timestamp": "2026-09-24T20:00:00.123Z",
       "flags": { "authoritative": false, "truncated": false, "recursion_desired": true,
                  "recursion_available": true, "authenticated_data": false, "checking_disabled": false },
-      "cname_chain": [], "final_name": "example.com.",
+      "cname_chain": [], "cname_ttls": [], "final_name": "example.com.",
       "answers": [ { "name": "example.com.", "type": "A", "value": "93.184.216.34", "ttl": 300,
                      "raw": "example.com.\t300\tIN\tA\t93.184.216.34" } ],
       "ignored_records": 0, "group": 1
@@ -447,7 +451,7 @@ in expected mode and `error` only on failed results; ordering is deterministic
       "duration_ms": 6250, "attempts": 2, "timestamp": "2026-09-24T20:00:00.123Z",
       "flags": { "authoritative": false, "truncated": false, "recursion_desired": false,
                  "recursion_available": false, "authenticated_data": false, "checking_disabled": false },
-      "cname_chain": [], "final_name": "example.com.", "answers": [],
+      "cname_chain": [], "cname_ttls": [], "final_name": "example.com.", "answers": [],
       "ignored_records": 0, "group": 0,
       "error": { "category": "timeout", "message": "no response within 3s" }
     }
