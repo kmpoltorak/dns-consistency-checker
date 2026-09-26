@@ -140,7 +140,7 @@ type ResultDoc struct {
 	Flags           FlagsDoc    `json:"flags" yaml:"flags"`
 	CNAMEChain      []string    `json:"cname_chain" yaml:"cname_chain"`
 	CNAMETTLs       []uint32    `json:"cname_ttls" yaml:"cname_ttls"`
-	FinalName      string      `json:"final_name" yaml:"final_name"`
+	FinalName       string      `json:"final_name" yaml:"final_name"`
 	Answers         []AnswerDoc `json:"answers" yaml:"answers"`
 	IgnoredRecords  int         `json:"ignored_records" yaml:"ignored_records"`
 	Group           int         `json:"group" yaml:"group"` // 0: failed
@@ -229,7 +229,7 @@ func newResultDoc(r dnsclient.Result, group int) ResultDoc {
 		Flags:           FlagsDoc(r.Flags),
 		CNAMEChain:      nonNil(r.CNAMEChain),
 		CNAMETTLs:       nonNil(r.CNAMETTLs),
-		FinalName:      r.FinalName,
+		FinalName:       r.FinalName,
 		Answers:         make([]AnswerDoc, 0, len(r.Records)),
 		IgnoredRecords:  r.IgnoredRecords,
 		Group:           group,
