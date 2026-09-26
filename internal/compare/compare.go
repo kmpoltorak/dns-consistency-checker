@@ -311,30 +311,45 @@ func issues(rep *Report) []Issue {
 }
 
 // ttlSpread summarizes TTL differences between members of a group, e.g.
-// "TTL 120-300s on 2 of 3 records", or returns "" when all TTLs agree.
+// "TTL 120-300s on 2 of 3 records; CNAME TTL 60-600s on 1 of 1 chain links",
+// or returns "" when all TTLs agree.
 func ttlSpread(results []dnsclient.Result, g Group) string {
-	differing := 0
-	var lo, hi uint32
-	for ri, rec := range g.Records {
-		rlo, rhi := rec.TTL, rec.TTL
-		for _, m := range g.Members {
-			// Members share the same sorted values, so record ri lines up.
-			ttl := results[m].Records[ri].TTL
-			rlo, rhi = min(rlo, ttl), max(rhi, ttl)
-		}
-		if rlo != rhi {
-			if differing == 0 {
-				lo, hi = rlo, rhi
-			}
-			differing++
-			lo, hi = min(lo, rlo), max(hi, rhi)
-		}
+	// Members share the same sorted values and CNAME chain, so index i lines up.
+	var parts []string
+	if d, lo, hi := spread(g, len(g.Records), func(m, i int) uint32 { return results[m].Records[i].TTL }); d > 0 {
+		parts = append(parts, fmt.Sprintf("TTL %d-%ds on %d of %d records", lo, hi, d, len(g.Records)))
 	}
-	if differing == 0 {
+	links := len(results[g.Members[0]].CNAMETTLs)
+	for _, m := range g.Members {
+		links = min(links, len(results[m].CNAMETTLs))
+	}
+	if d, lo, hi := spread(g, links, func(m, i int) uint32 { return results[m].CNAMETTLs[i] }); d > 0 {
+		parts = append(parts, fmt.Sprintf("CNAME TTL %d-%ds on %d of %d chain links", lo, hi, d, links))
+	}
+	if parts == nil {
 		return ""
 	}
-	return fmt.Sprintf("TTL %d-%ds on %d of %d records (per-record TTLs are in the structured output)",
-		lo, hi, differing, len(g.Records))
+	return strings.Join(parts, "; ") + " (per-record TTLs are in the structured output)"
+}
+
+// spread counts the positions 0..n-1 whose TTL differs between group members
+// and returns the overall TTL range of those positions.
+func spread(g Group, n int, ttl func(member, i int) uint32) (differing int, lo, hi uint32) {
+	for i := range n {
+		first := ttl(g.Members[0], i)
+		ilo, ihi := first, first
+		for _, m := range g.Members {
+			ilo, ihi = min(ilo, ttl(m, i)), max(ihi, ttl(m, i))
+		}
+		if ilo != ihi {
+			if differing == 0 {
+				lo, hi = ilo, ihi
+			}
+			differing++
+			lo, hi = min(lo, ilo), max(hi, ihi)
+		}
+	}
+	return differing, lo, hi
 }
 
 // tied returns how many groups share the largest size.

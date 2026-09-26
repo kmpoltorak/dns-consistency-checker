@@ -166,8 +166,12 @@ func TestCNAMETTLCompared(t *testing.T) {
 	a.CNAMEChain, a.CNAMETTLs = []string{"target.example."}, []uint32{60}
 	b := res("bb", ok, "10.0.0.1@60")
 	b.CNAMEChain, b.CNAMETTLs = []string{"target.example."}, []uint32{600}
-	if got := Analyze([]dnsclient.Result{a, b}, Options{}).Status; got != Consistent {
-		t.Fatalf("default status = %s", got)
+	rep := Analyze([]dnsclient.Result{a, b}, Options{})
+	if rep.Status != Consistent || len(rep.Issues) != 1 || rep.Issues[0].Type != IssueTTLDifference {
+		t.Fatalf("default status = %s issues = %+v", rep.Status, rep.Issues)
+	}
+	if want := "TTL values differ within response group 1: CNAME TTL 60-600s on 1 of 1 chain links (per-record TTLs are in the structured output)"; rep.Issues[0].Message != want {
+		t.Fatalf("message = %q", rep.Issues[0].Message)
 	}
 	if got := Analyze([]dnsclient.Result{a, b}, Options{CompareTTL: true}).Status; got != Inconsistent {
 		t.Fatalf("--compare-ttl status = %s", got)

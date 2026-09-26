@@ -267,8 +267,8 @@ query name.
 
 TTLs are collected for every record and included in JSON/YAML output. By
 default they do not affect consistency — caching resolvers count TTLs down,
-so differences are normal. Differences inside a response group are reported
-as one `[info]` issue per group. With `--compare-ttl`, TTLs of the final
+so differences are normal. Differences inside a response group, in the final
+records or in the CNAME chain, are reported as one `[info]` issue per group. With `--compare-ttl`, TTLs of the final
 records and of the CNAME chain become part of the comparison key and any
 difference is `INCONSISTENT`.
 
